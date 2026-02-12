@@ -1,0 +1,239 @@
+#:kivy 2.0
+
+<YouTubeDownloader>:
+    orientation: 'vertical'
+    padding: 40
+    spacing: 20
+    
+    canvas.before:
+        Color:
+            rgba: 0.95, 0.95, 0.97, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    
+    BoxLayout:
+        orientation: 'vertical'
+        size_hint_x: None
+        width: 400
+        pos_hint: {'center_x': 0.5}
+        spacing: 20
+        
+        # Header
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
+            height: 80
+            spacing: 5
+            
+            Label:
+                text: 'YouTube Downloader'
+                font_size: '28sp'
+                bold: True
+                color: 0.1, 0.1, 0.1, 1
+                size_hint_y: None
+                height: 40
+                
+            Label:
+                text: 'Download videos or audio easily'
+                font_size: '13sp'
+                color: 0.5, 0.5, 0.5, 1
+                size_hint_y: None
+                height: 25
+        
+        # URL Input
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
+            height: 75
+            spacing: 8
+            
+            Label:
+                text: 'YouTube Video URL'
+                font_size: '13sp'
+                bold: True
+                color: 0.1, 0.1, 0.1, 1
+                size_hint_y: None
+                height: 20
+                halign: 'left'
+                text_size: self.size
+            
+            BoxLayout:
+                size_hint_y: None
+                height: 45
+                spacing: 5
+                
+                TextInput:
+                    id: url_input
+                    hint_text: 'Paste YouTube link here...'
+                    multiline: False
+                    background_color: 0.98, 0.98, 0.99, 1
+                    foreground_color: 0.1, 0.1, 0.1, 1
+                    cursor_color: 0.2, 0.4, 0.8, 1
+                    padding: 12, 10
+                    font_size: '13sp'
+                    on_text: root.on_url_change(self.text)
+                
+                Button:
+                    text: 'Paste'
+                    size_hint_x: None
+                    width: 60
+                    background_normal: ''
+                    background_color: 0.9, 0.9, 0.92, 1
+                    color: 0.3, 0.3, 0.3, 1
+                    on_release: root.on_paste_click()
+        
+        # Quality Selection
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
+            height: 130
+            spacing: 8
+            
+            Label:
+                text: 'Select Video Quality'
+                font_size: '13sp'
+                bold: True
+                color: 0.1, 0.1, 0.1, 1
+                size_hint_y: None
+                height: 20
+                halign: 'left'
+                text_size: self.size
+            
+            GridLayout:
+                cols: 2
+                spacing: 8
+                size_hint_y: None
+                height: 95
+                
+                ToggleButton:
+                    text: 'Max Available'
+                    group: 'quality'
+                    state: 'down' if root.quality_selected == 'max' else 'normal'
+                    disabled: root.audio_only
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.3, 0.5, 0.9, 0.3) if self.state == 'down' else (0.96, 0.96, 0.98, 1)
+                    color: (0.2, 0.4, 0.8, 1) if self.state == 'down' else (0.2, 0.2, 0.2, 1)
+                    font_size: '12sp'
+                    on_release: root.on_quality_select('max')
+                
+                ToggleButton:
+                    text: '1080p'
+                    group: 'quality'
+                    state: 'down' if root.quality_selected == '1080' else 'normal'
+                    disabled: root.audio_only
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.3, 0.5, 0.9, 0.3) if self.state == 'down' else (0.96, 0.96, 0.98, 1)
+                    color: (0.2, 0.4, 0.8, 1) if self.state == 'down' else (0.2, 0.2, 0.2, 1)
+                    font_size: '12sp'
+                    on_release: root.on_quality_select('1080')
+                
+                ToggleButton:
+                    text: '720p'
+                    group: 'quality'
+                    state: 'down' if root.quality_selected == '720' else 'normal'
+                    disabled: root.audio_only
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.3, 0.5, 0.9, 0.3) if self.state == 'down' else (0.96, 0.96, 0.98, 1)
+                    color: (0.2, 0.4, 0.8, 1) if self.state == 'down' else (0.2, 0.2, 0.2, 1)
+                    font_size: '12sp'
+                    on_release: root.on_quality_select('720')
+                
+                ToggleButton:
+                    text: '480p'
+                    group: 'quality'
+                    state: 'down' if root.quality_selected == '480' else 'normal'
+                    disabled: root.audio_only
+                    background_normal: ''
+                    background_down: ''
+                    background_color: (0.3, 0.5, 0.9, 0.3) if self.state == 'down' else (0.96, 0.96, 0.98, 1)
+                    color: (0.2, 0.4, 0.8, 1) if self.state == 'down' else (0.2, 0.2, 0.2, 1)
+                    font_size: '12sp'
+                    on_release: root.on_quality_select('480')
+        
+        # Audio Toggle
+        BoxLayout:
+            orientation: 'horizontal'
+            size_hint_y: None
+            height: 65
+            padding: 12
+            spacing: 10
+            canvas.before:
+                Color:
+                    rgba: 0.96, 0.96, 0.98, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            
+            BoxLayout:
+                orientation: 'vertical'
+                spacing: 2
+                
+                Label:
+                    text: 'Download Options'
+                    font_size: '13sp'
+                    bold: True
+                    color: 0.1, 0.1, 0.1, 1
+                    size_hint_y: None
+                    height: 22
+                    halign: 'left'
+                    text_size: self.size
+                
+                Label:
+                    text: 'Audio Only (MP3)'
+                    font_size: '11sp'
+                    color: 0.5, 0.5, 0.5, 1
+                    size_hint_y: None
+                    height: 18
+                    halign: 'left'
+                    text_size: self.size
+            
+            Switch:
+                size_hint_x: None
+                width: 60
+                active: root.audio_only
+                on_active: root.on_audio_toggle(self.active)
+        
+        # Error Message
+        Label:
+            text: root.error_message
+            font_size: '12sp'
+            color: 0.9, 0.2, 0.2, 1
+            size_hint_y: None
+            height: 30 if root.error_message else 0
+            opacity: 1 if root.error_message else 0
+        
+        # Success Message
+        Label:
+            text: root.success_message
+            font_size: '12sp'
+            color: 0.2, 0.8, 0.3, 1
+            size_hint_y: None
+            height: 30 if root.success_message else 0
+            opacity: 1 if root.success_message else 0
+        
+        # Download Button
+        Button:
+            text: 'Download' if not root.is_loading else 'Downloading...'
+            size_hint_y: None
+            height: 48
+            disabled: root.is_loading or root.url_text == ''
+            background_normal: ''
+            background_color: (0.2, 0.4, 0.8, 1) if not self.disabled else (0.7, 0.7, 0.7, 0.5)
+            color: 1, 1, 1, 1
+            font_size: '15sp'
+            bold: True
+            on_release: root.start_download()
+        
+        # Info Text
+        Label:
+            text: 'Paste a YouTube link and select your preferred quality to download.'
+            font_size: '10sp'
+            color: 0.5, 0.5, 0.5, 1
+            size_hint_y: None
+            height: 25
+            text_size: self.size
+            halign: 'center'
