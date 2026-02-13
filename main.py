@@ -60,7 +60,7 @@ class YouTubeDownloader(BoxLayout):
     error_message = StringProperty('')
     success_message = StringProperty('')
     
-    # Properties for progress tracking (will use later)
+    # Properties for progress tracking
     download_progress = NumericProperty(0)
     current_item = StringProperty('')
     total_items = NumericProperty(0)
@@ -228,6 +228,7 @@ class YouTubeDownloader(BoxLayout):
             print(f"Mode: {'Audio (MP3)' if self.audio_only else 'Video'}")
             print(f"Quality: {self.quality_selected}")
             print(f"Output Path: {output_path}")
+            print(f"Platform: {'Android' if ANDROID else 'Desktop'}")
 
             # Progress hook for UI updates
             def progress_hook(d):
@@ -238,7 +239,6 @@ class YouTubeDownloader(BoxLayout):
                             Clock.schedule_once(
                                 lambda dt: setattr(self, 'download_progress', percent), 0
                             )
-
                         elif 'downloaded_bytes' in d and 'total_bytes_estimate' in d:
                             percent = (
                                 d['downloaded_bytes'] / d['total_bytes_estimate']
@@ -259,25 +259,19 @@ class YouTubeDownloader(BoxLayout):
                             lambda dt: setattr(self, 'download_progress', 100), 0
                         )
 
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Progress hook error: {e}")
 
             ydl_opts = {
                 'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-                'logger': YTDLPLogger(),      
+                'logger': YTDLPLogger(),
                 'progress_hooks': [progress_hook],
-                'quiet': True,
-                'no_warnings': True,
-                'noprogress': True,
+                'quiet': False,
+                'no_warnings': False,
+                'noprogress': False,
+                'ignoreerrors': False,
+                'nocheckcertificate': True,  # Fix SSL issues on Android
             }
-            
-            
-            
-            if not ANDROID:
-                ydl_opts.update({
-                    'js_runtimes': {'node': {}},
-                    'remote_components': ['ejs:github'],
-                })
 
             if self.is_playlist(self.url_text):
                 ydl_opts['noplaylist'] = False
@@ -292,26 +286,38 @@ class YouTubeDownloader(BoxLayout):
 
             if self.audio_only:
                 ydl_opts['format'] = 'bestaudio/best'
-                ydl_opts['postprocessors'] = [
-                    {
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': '192',
-                    }
-                ]
-                ydl_opts['prefer_ffmpeg'] = True
-
+                
+                # Only convert to MP3 on Desktop (FFmpeg not available on Android)
+                if not ANDROID:
+                    ydl_opts['postprocessors'] = [
+                        {
+                            'key': 'FFmpegExtractAudio',
+                            'preferredcodec': 'mp3',
+                            'preferredquality': '192',
+                        }
+                    ]
+                    ydl_opts['prefer_ffmpeg'] = True
+                else:
+                    # On Android, download best audio format (m4a/webm)
+                    print("📱 Android: Downloading audio without conversion (m4a/webm format)")
             else:
-                if self.quality_selected == 'max':
-                    ydl_opts['format'] = 'bestvideo+bestaudio/best'
-                elif self.quality_selected == '1080p':
-                    ydl_opts['format'] = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
-                elif self.quality_selected == '720':
-                    ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best[height<=720]'
-                elif self.quality_selected == '480':
-                    ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best[height<=480]'
-
-                ydl_opts['merge_output_format'] = 'mp4'
+                # Video download
+                if ANDROID:
+                    # Simplified format for Android
+                    ydl_opts['format'] = 'best[height<=720]'  # Limit to 720p for Android compatibility
+                    print("📱 Android: Using simplified video format (max 720p)")
+                else:
+                    # Desktop: Full quality support
+                    if self.quality_selected == 'max':
+                        ydl_opts['format'] = 'bestvideo+bestaudio/best'
+                    elif self.quality_selected == '1080p':
+                        ydl_opts['format'] = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
+                    elif self.quality_selected == '720':
+                        ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best[height<=720]'
+                    elif self.quality_selected == '480':
+                        ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best[height<=480]'
+                    
+                    ydl_opts['merge_output_format'] = 'mp4'
 
             print("-" * 60)
             print("⏳ Fetching video information...")
@@ -345,9 +351,10 @@ class YouTubeDownloader(BoxLayout):
             error_msg = str(e)
 
             print("\n" + "=" * 60)
-            print("❌ DOWNLOAD ERROR")
+            print("❌ DOWNLOAD ERROR (DownloadError)")
             print("=" * 60)
-            print(f"Error: {error_msg}")
+            print(f"Full Error: {error_msg}")
+            print(f"Error Type: {type(e).__name__}")
             print("=" * 60 + "\n")
 
             if 'Video unavailable' in error_msg:
@@ -361,26 +368,31 @@ class YouTubeDownloader(BoxLayout):
                     0,
                 )
             else:
+                # Show more detailed error
+                error_display = error_msg[:80] if len(error_msg) > 80 else error_msg
                 Clock.schedule_once(
-                    lambda dt: self.on_download_error('Download failed. Check URL'),
+                    lambda dt: self.on_download_error(f'Error: {error_display}'),
                     0,
                 )
 
         except Exception as e:
-            error_message = f'Error: {str(e)[:50]}'
+            import traceback
+            error_message = str(e)
+            full_traceback = traceback.format_exc()
 
             print("\n" + "=" * 60)
             print("❌ UNEXPECTED ERROR")
             print("=" * 60)
             print(f"Error Type: {type(e).__name__}")
-            print(f"Error Message: {e}")
+            print(f"Error Message: {error_message}")
+            print(f"Full Traceback:\n{full_traceback}")
             print("=" * 60 + "\n")
 
+            error_display = f'{type(e).__name__}: {error_message[:50]}'
             Clock.schedule_once(
-                lambda dt: self.on_download_error(error_message), 0
+                lambda dt: self.on_download_error(error_display), 0
             )
 
-    
     def on_download_success(self):
         """Handle successful download"""
         self.is_loading = False
@@ -398,7 +410,10 @@ class YouTubeDownloader(BoxLayout):
             self.success_message = f'✓ {self.total_items} items downloaded to {folder} folder'
             print(f"📦 Total Items Downloaded: {self.total_items}")
         else:
-            self.success_message = f'✓ {file_type} downloaded to {folder} folder'
+            if ANDROID and self.audio_only:
+                self.success_message = f'✓ Audio downloaded (m4a format) to {folder} folder'
+            else:
+                self.success_message = f'✓ {file_type} downloaded to {folder} folder'
             print(f"📦 {file_type} Downloaded: 1 file")
         
         print(f"📁 Location: {folder_path}")
@@ -412,6 +427,7 @@ class YouTubeDownloader(BoxLayout):
         self.current_item = ''
         
         Clock.schedule_once(lambda dt: self.clear_success(), 7)
+    
     def on_download_error(self, error):
         """Handle download error"""
         self.is_loading = False

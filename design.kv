@@ -348,7 +348,7 @@
 
             # FOOTER
             Label:
-                text: 'Paste a YouTube link and select your preferred quality to download.'
+                text: 'Paste a YouTube link and select your preferred quality to download.' if not root.audio_only else ('Audio will be saved as MP3' if not root.audio_only else 'Audio will be saved in m4a/webm format on Android')
                 font_size: sp(12)
                 color: 0.45, 0.45, 0.45, 1
                 size_hint_y: None
@@ -356,8 +356,3 @@
                 halign: 'center'
                 valign: 'middle'
                 text_size: self.size
-
-            # Bottom padding for scroll
-            Widget:
-                size_hint_y: None
-                height: dp(20)
