@@ -270,7 +270,7 @@ class YouTubeDownloader(BoxLayout):
                 'no_warnings': False,
                 'noprogress': False,
                 'ignoreerrors': False,
-                'nocheckcertificate': True,  # Fix SSL issues on Android
+                'nocheckcertificate': True,
             }
 
             if self.is_playlist(self.url_text):
@@ -285,10 +285,13 @@ class YouTubeDownloader(BoxLayout):
                 print("📹 Single video download")
 
             if self.audio_only:
-                ydl_opts['format'] = 'bestaudio/best'
-                
-                # Only convert to MP3 on Desktop (FFmpeg not available on Android)
-                if not ANDROID:
+                if ANDROID:
+                    # ✅ ANDROID: NO conversion, direct audio
+                    ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
+                    print("📱 Android: Downloading M4A audio (no conversion)")
+                else:
+                    # 💻 DESKTOP: Convert to MP3
+                    ydl_opts['format'] = 'bestaudio/best'
                     ydl_opts['postprocessors'] = [
                         {
                             'key': 'FFmpegExtractAudio',
@@ -297,17 +300,23 @@ class YouTubeDownloader(BoxLayout):
                         }
                     ]
                     ydl_opts['prefer_ffmpeg'] = True
-                else:
-                    # On Android, download best audio format (m4a/webm)
-                    print("📱 Android: Downloading audio without conversion (m4a/webm format)")
+                    print("💻 Desktop: Converting audio to MP3")
             else:
-                # Video download
                 if ANDROID:
-                    # Simplified format for Android
-                    ydl_opts['format'] = 'best[height<=720]'  # Limit to 720p for Android compatibility
-                    print("📱 Android: Using simplified video format (max 720p)")
+                    # ✅ ANDROID: single file only (NO MERGE)
+                    if self.quality_selected == 'max':
+                        ydl_opts['format'] = 'best'
+                    elif self.quality_selected == '1080p':
+                        ydl_opts['format'] = 'best[height<=1080]'
+                    elif self.quality_selected == '720':
+                        ydl_opts['format'] = 'best[height<=720]'
+                    elif self.quality_selected == '480':
+                        ydl_opts['format'] = 'best[height<=480]'
+            
+                    print("📱 Android: Downloading single video file (no merging)")
+            
                 else:
-                    # Desktop: Full quality support
+                    # 💻 DESKTOP: full quality merge
                     if self.quality_selected == 'max':
                         ydl_opts['format'] = 'bestvideo+bestaudio/best'
                     elif self.quality_selected == '1080p':
@@ -316,9 +325,11 @@ class YouTubeDownloader(BoxLayout):
                         ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best[height<=720]'
                     elif self.quality_selected == '480':
                         ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best[height<=480]'
-                    
+            
                     ydl_opts['merge_output_format'] = 'mp4'
-
+                    print("💻 Desktop: Downloading & merging video/audio")
+                ydl_opts['merge_output_format'] = 'mp4'
+    
             print("-" * 60)
             print("⏳ Fetching video information...")
 
@@ -410,8 +421,9 @@ class YouTubeDownloader(BoxLayout):
             self.success_message = f'✓ {self.total_items} items downloaded to {folder} folder'
             print(f"📦 Total Items Downloaded: {self.total_items}")
         else:
-            if ANDROID and self.audio_only:
-                self.success_message = f'✓ Audio downloaded (m4a format) to {folder} folder'
+            # Updated success message
+            if self.audio_only:
+                self.success_message = f'✓ MP3 audio downloaded to {folder} folder'
             else:
                 self.success_message = f'✓ {file_type} downloaded to {folder} folder'
             print(f"📦 {file_type} Downloaded: 1 file")
