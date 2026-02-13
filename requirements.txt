@@ -8,12 +8,17 @@ idna==3.11
 Kivy==2.3.1
 Kivy-examples==2.3.1
 Kivy-Garden==0.1.5
+packaging==26.0
+pexpect==4.9.0
 pillow==10.4.0
 platformdirs==4.6.0
+ptyprocess==0.7.0
 Pygments==2.19.2
 pyperclip==1.11.0
 requests==2.32.5
 setuptools==82.0.0
+sh==2.2.2
 urllib3==2.6.3
 virtualenv==20.36.1
+wheel==0.46.3
 yt-dlp==2026.2.4
