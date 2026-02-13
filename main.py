@@ -6,19 +6,12 @@ Main application file
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
-from kivy.uix.button import Button
-from kivy.uix.textinput import TextInput
-from kivy.uix.togglebutton import ToggleButton
-from kivy.uix.popup import Popup
 from kivy.clock import Clock
-from kivy.properties import StringProperty, BooleanProperty, ObjectProperty
+from kivy.properties import StringProperty, BooleanProperty
+from kivy.lang import Builder
 from urllib.parse import urlparse
 import threading
 import time
-
-# Optional: Import yt-dlp for actual downloading
-# Uncomment when ready to implement real downloads
-# import yt_dlp
 
 
 class YouTubeDownloader(BoxLayout):
@@ -30,9 +23,6 @@ class YouTubeDownloader(BoxLayout):
     is_loading = BooleanProperty(False)
     error_message = StringProperty('')
     success_message = StringProperty('')
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
     
     def validate_url(self, url):
         """Validate if the URL is a valid YouTube URL"""
@@ -47,14 +37,12 @@ class YouTubeDownloader(BoxLayout):
     def on_paste_click(self):
         """Handle paste button click"""
         try:
-            # Kivy doesn't have direct clipboard access
-            # This is a placeholder - you'll need to use platform-specific code
-            # or a library like pyperclip
             from kivy.core.clipboard import Clipboard
             text = Clipboard.paste()
-            self.ids.url_input.text = text
-            self.url_text = text
-            self.error_message = ''
+            if text:
+                self.ids.url_input.text = text
+                self.url_text = text
+                self.error_message = ''
         except Exception as e:
             self.error_message = 'Unable to paste from clipboard'
     
@@ -98,24 +86,6 @@ class YouTubeDownloader(BoxLayout):
             # Schedule UI updates on main thread
             Clock.schedule_once(lambda dt: self.on_download_success(), 0)
             
-            # Uncomment and implement actual download with yt-dlp:
-            """
-            ydl_opts = {
-                'format': 'bestaudio/best' if self.audio_only else f'best[height<={self.quality_selected}]',
-                'outtmpl': '%(title)s.%(ext)s',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }] if self.audio_only else [],
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([self.url_text])
-            
-            Clock.schedule_once(lambda dt: self.on_download_success(), 0)
-            """
-            
         except Exception as e:
             Clock.schedule_once(lambda dt: self.on_download_error(str(e)), 0)
     
@@ -144,8 +114,7 @@ class YouTubeDownloaderApp(App):
     
     def build(self):
         self.title = 'YouTube Downloader'
-        # Explicitly load the kv file
-        from kivy.lang import Builder
+        # Load kv file
         Builder.load_file('design.kv')
         return YouTubeDownloader()
 
