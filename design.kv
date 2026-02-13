@@ -150,15 +150,15 @@
                         disabled: root.audio_only
                         on_release: root.on_quality_select('max')
                         background_color: (0.18, 0.18, 0.18, 1) if not self.disabled else (0.28, 0.28, 0.28, 1)
-                        color: 1, 1, 1, 1 if not self.disabled else (0.5, 0.5, 0.5, 1)
+                        color: 1, 1, 1, 1  if not self.disabled else (0.4, 0.4, 0.4, 1)
                         canvas.before:
                             Color:
-                                rgba: (0.18,0.18,0.18,1)
+                                rgba: (0.65, 0.15, 0.15, 1) if self.state == 'down' and not self.disabled else (0.22, 0.22, 0.22, 1)
                             Rectangle:
                                 pos: self.pos
                                 size: self.size
                             Color:
-                                rgba: (0.9,0.9,0.9,1) if self.state == 'down' else (0,0,0,0)
+                                rgba: (0.9, 0.25, 0.25, 1) if self.state == 'down' and not self.disabled else (0, 0, 0, 0)
                             Line:
                                 rectangle: self.x, self.y, self.width, self.height
                                 width: 2.5
@@ -170,15 +170,15 @@
                         disabled: root.audio_only
                         on_release: root.on_quality_select('1080p')
                         background_color: (0.18, 0.18, 0.18, 1) if not self.disabled else (0.28, 0.28, 0.28, 1)
-                        color: 1, 1, 1, 1  # White text (always)
+                        color: 1, 1, 1, 1  if not self.disabled else (0.4, 0.4, 0.4, 1)
                         canvas.before:
                             Color:
-                                rgba: (0.18, 0.18, 0.18, 1)  # Dark gray background (always)
+                                rgba: (0.65, 0.15, 0.15, 1) if self.state == 'down' and not self.disabled else (0.22, 0.22, 0.22, 1)
                             Rectangle:
                                 pos: self.pos
                                 size: self.size
                             Color:
-                                rgba: (0.6, 0.6, 0.6, 1) if self.state == 'down' else (0, 0, 0, 0)  # Light gray border when selected
+                                rgba: (0.9, 0.25, 0.25, 1) if self.state == 'down' and not self.disabled else (0, 0, 0, 0)
                             Line:
                                 rectangle: (self.x, self.y, self.width, self.height)
                                 width: 2.5
