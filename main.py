@@ -4,6 +4,25 @@ Main application file with yt-dlp integration
 Supports: Android, Desktop, and WSL
 """
 
+class YTDLPLogger:
+    def debug(self, msg):
+        pass
+
+    def warning(self, msg):
+        print(f"[yt-dlp warning] {msg}")
+
+    def error(self, msg):
+        print(f"[yt-dlp error] {msg}")
+
+    def write(self, msg):
+        # yt-dlp may call write() directly
+        if msg.strip():
+            print(msg.strip())
+
+    def flush(self):
+        pass
+
+
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.clock import Clock
@@ -244,11 +263,20 @@ class YouTubeDownloader(BoxLayout):
 
             ydl_opts = {
                 'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+                'logger': YTDLPLogger(),      
+                'progress_hooks': [progress_hook],
                 'quiet': True,
                 'no_warnings': True,
-                'progress_hooks': [progress_hook],
-                'noprogress': False,
+                'noprogress': True,
             }
+            
+            
+            
+            if not ANDROID:
+                ydl_opts.update({
+                    'js_runtimes': {'node': {}},
+                    'remote_components': ['ejs:github'],
+                })
 
             if self.is_playlist(self.url_text):
                 ydl_opts['noplaylist'] = False
