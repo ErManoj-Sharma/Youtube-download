@@ -198,6 +198,14 @@ class YouTubeDownloader(BoxLayout):
         try:
             output_path = self.audio_path if self.audio_only else self.video_path
             
+            print("\n" + "="*60)
+            print("🚀 DOWNLOAD STARTED")
+            print("="*60)
+            print(f"URL: {self.url_text}")
+            print(f"Mode: {'Audio (MP3)' if self.audio_only else 'Video'}")
+            print(f"Quality: {self.quality_selected}")
+            print(f"Output Path: {output_path}")
+            
             ydl_opts = {
                 'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
                 'quiet': True,
@@ -206,9 +214,11 @@ class YouTubeDownloader(BoxLayout):
             
             if self.is_playlist(self.url_text):
                 ydl_opts['noplaylist'] = False
+                print("📋 Playlist detected - downloading all videos")
                 Clock.schedule_once(lambda dt: setattr(self, 'success_message', 'Downloading playlist...'), 0)
             else:
                 ydl_opts['noplaylist'] = True
+                print("📹 Single video download")
             
             if self.audio_only:
                 ydl_opts['format'] = 'bestaudio/best'
@@ -230,6 +240,9 @@ class YouTubeDownloader(BoxLayout):
                 
                 ydl_opts['merge_output_format'] = 'mp4'
             
+            print("-"*60)
+            print("⏳ Fetching video information...")
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Get info to count items
                 info = ydl.extract_info(self.url_text, download=False)
@@ -237,16 +250,32 @@ class YouTubeDownloader(BoxLayout):
                 if 'entries' in info:
                     total = len(list(info['entries']))
                     Clock.schedule_once(lambda dt: setattr(self, 'total_items', total), 0)
+                    print(f"📊 Found {total} videos in playlist")
                 else:
                     Clock.schedule_once(lambda dt: setattr(self, 'total_items', 1), 0)
+                    video_title = info.get('title', 'Unknown')
+                    print(f"📊 Video Title: {video_title}")
+                
+                print("-"*60)
+                print("⬇️  Starting download...")
                 
                 # Start download
                 ydl.download([self.url_text])
+            
+            print("-"*60)
+            print("✅ Download process completed successfully!")
+            print("="*60 + "\n")
             
             Clock.schedule_once(lambda dt: self.on_download_success(), 0)
             
         except yt_dlp.utils.DownloadError as e:
             error_msg = str(e)
+            print("\n" + "="*60)
+            print("❌ DOWNLOAD ERROR")
+            print("="*60)
+            print(f"Error: {error_msg}")
+            print("="*60 + "\n")
+            
             if 'Video unavailable' in error_msg:
                 Clock.schedule_once(lambda dt: self.on_download_error('Video is unavailable or private'), 0)
             elif 'No video formats' in error_msg:
@@ -255,7 +284,12 @@ class YouTubeDownloader(BoxLayout):
                 Clock.schedule_once(lambda dt: self.on_download_error('Download failed. Check URL'), 0)
         except Exception as e:
             error_message = f'Error: {str(e)[:50]}'
-            print(f"Download error: {e}")
+            print("\n" + "="*60)
+            print("❌ UNEXPECTED ERROR")
+            print("="*60)
+            print(f"Error Type: {type(e).__name__}")
+            print(f"Error Message: {e}")
+            print("="*60 + "\n")
             Clock.schedule_once(lambda dt: self.on_download_error(error_message), 0)
     
     def on_download_success(self):
@@ -265,11 +299,21 @@ class YouTubeDownloader(BoxLayout):
         
         file_type = 'Audio' if self.audio_only else 'Video'
         folder = 'Audio' if self.audio_only else 'Video'
+        folder_path = self.audio_path if self.audio_only else self.video_path
+        
+        print("\n" + "🎉"*30)
+        print("✅ DOWNLOAD COMPLETED SUCCESSFULLY!")
+        print("🎉"*30)
         
         if self.total_items > 1:
             self.success_message = f'✓ {self.total_items} items downloaded to {folder} folder'
+            print(f"📦 Total Items Downloaded: {self.total_items}")
         else:
             self.success_message = f'✓ {file_type} downloaded to {folder} folder'
+            print(f"📦 {file_type} Downloaded: 1 file")
+        
+        print(f"📁 Location: {folder_path}")
+        print("="*60 + "\n")
         
         self.url_text = ''
         self.ids.url_input.text = ''
@@ -281,6 +325,10 @@ class YouTubeDownloader(BoxLayout):
         self.is_loading = False
         self.error_message = error
         self.success_message = ''
+        
+        print("\n" + "⚠️ "*30)
+        print(f"Error displayed to user: {error}")
+        print("⚠️ "*30 + "\n")
     
     def clear_success(self):
         """Clear success message"""
