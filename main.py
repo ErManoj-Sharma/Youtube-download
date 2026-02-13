@@ -14,6 +14,9 @@ import threading
 import os
 import subprocess
 from pathlib import Path
+from kivy.core.window import Window
+Window.minimum_height = 780
+Window.minimum_width = 560
 
 # Import yt-dlp
 import yt_dlp
