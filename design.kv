@@ -7,8 +7,8 @@
     background_normal: ''
     background_down: ''
     size_hint_y: None
-    height: 50
-    font_size: '14sp'
+    height: dp(50)
+    font_size: sp(14)
     bold: True
 
 
@@ -24,30 +24,29 @@
             pos: self.pos
             size: self.size
 
-    # CENTERING CONTAINER (NO SCROLLVIEW)
-    AnchorLayout:
-        anchor_x: 'center'
-        anchor_y: 'center'
+    # SCROLLABLE CONTAINER FOR MOBILE
+    ScrollView:
+        do_scroll_x: False
+        do_scroll_y: True
 
         BoxLayout:
             orientation: 'vertical'
-            size_hint_x: 0.95
-            width: 500
             size_hint_y: None
             height: self.minimum_height
             spacing: 0
+            padding: [dp(8), 0, dp(8), 0]
 
             # Top spacer
             Widget:
                 size_hint_y: None
-                height: 20
+                height: dp(20)
 
             # Header
             BoxLayout:
                 orientation: 'vertical'
                 size_hint_y: None
-                height: 85
-                spacing: 5
+                height: dp(85)
+                spacing: dp(5)
 
                 Label:
                     text: 'YouTube Downloader'
@@ -55,39 +54,40 @@
                     bold: True
                     color: 1, 1, 1, 1
                     size_hint_y: None
-                    height: 50
+                    height: dp(50)
 
                 Label:
                     text: 'Download videos or audio easily'
                     font_size: sp(13)
                     color: 0.55, 0.55, 0.55, 1
                     size_hint_y: None
-                    height: 30
+                    height: dp(30)
 
             Widget:
                 size_hint_y: None
-                height: 30
+                height: dp(25)
 
             # URL INPUT
             BoxLayout:
                 orientation: 'vertical'
                 size_hint_y: None
-                height: 90
-                spacing: 10
+                height: dp(90)
+                spacing: dp(10)
 
                 Label:
                     text: 'YouTube Video URL'
-                    font_size: '14sp'
+                    font_size: sp(14)
                     bold: True
                     color: 1, 1, 1, 1
                     size_hint_y: None
-                    height: 25
+                    height: dp(25)
                     halign: 'left'
                     text_size: self.size
 
                 BoxLayout:
                     size_hint_y: None
-                    height: 50
+                    height: dp(50)
+                    spacing: 0
                     canvas.before:
                         Color:
                             rgba: 0.18, 0.18, 0.18, 1
@@ -105,46 +105,46 @@
                         background_color: 0, 0, 0, 0
                         foreground_color: 0.95, 0.95, 0.95, 1
                         cursor_color: 0.85, 0.25, 0.25, 1
-                        padding: [15, 13, 15, 13]
-                        font_size: '14sp'
+                        padding: [dp(15), dp(13), dp(15), dp(13)]
+                        font_size: sp(14)
                         on_text: root.on_url_change(self.text)
 
                     Button:
                         text: 'Paste'
-                        size_hint_x: 0.95
-                        width: 90
+                        size_hint_x: None
+                        width: dp(80)
                         background_normal: ''
                         background_color: 0, 0, 0, 0
                         color: 0.65, 0.65, 0.65, 1
-                        font_size: '14sp'
+                        font_size: sp(14)
                         on_release: root.on_paste_click()
 
             Widget:
                 size_hint_y: None
-                height: 25
+                height: dp(20)
 
             # QUALITY SELECTION
             BoxLayout:
                 orientation: 'vertical'
                 size_hint_y: None
-                height: 160
-                spacing: 12
+                height: dp(160)
+                spacing: dp(10)
 
                 Label:
                     text: 'Select Video Quality'
-                    font_size: '14sp'
+                    font_size: sp(14)
                     bold: True
                     color: 1, 1, 1, 1
                     size_hint_y: None
-                    height: 25
+                    height: dp(25)
                     halign: 'left'
                     text_size: self.size
 
                 GridLayout:
                     cols: 2
-                    spacing: 12
+                    spacing: dp(10)
                     size_hint_y: None
-                    height: 115
+                    height: dp(110)
 
                     QualityButton:
                         text: 'Max Available'
@@ -164,7 +164,7 @@
                                 rgba: (0.9, 0.25, 0.25, 1) if self.state == 'down' and not self.disabled else (0, 0, 0, 0)
                             Line:
                                 rectangle: self.x, self.y, self.width, self.height
-                                width: 2.5
+                                width: dp(2.5)
 
                     QualityButton:
                         text: '1080p'
@@ -183,8 +183,8 @@
                             Color:
                                 rgba: (0.9, 0.25, 0.25, 1) if self.state == 'down' and not self.disabled else (0, 0, 0, 0)
                             Line:
-                                rectangle: (self.x, self.y, self.width, self.height)
-                                width: 2.5
+                                rectangle: self.x, self.y, self.width, self.height
+                                width: dp(2.5)
 
                     QualityButton:
                         text: '720p'
@@ -203,8 +203,8 @@
                             Color:
                                 rgba: (0.9, 0.25, 0.25, 1) if self.state == 'down' and not self.disabled else (0, 0, 0, 0)
                             Line:
-                                rectangle: (self.x, self.y, self.width, self.height)
-                                width: 2.5
+                                rectangle: self.x, self.y, self.width, self.height
+                                width: dp(2.5)
 
                     QualityButton:
                         text: '480p'
@@ -224,19 +224,19 @@
                             Color:
                                 rgba: (0.9, 0.25, 0.25, 1) if self.state == 'down' and not self.disabled else (0, 0, 0, 0)
                             Line:
-                                rectangle: (self.x, self.y, self.width, self.height)
-                                width: 2.5
+                                rectangle: self.x, self.y, self.width, self.height
+                                width: dp(2.5)
 
             Widget:
                 size_hint_y: None
-                height: 20
+                height: dp(20)
 
             # AUDIO TOGGLE
             BoxLayout:
                 size_hint_y: None
-                height: 75
-                padding: [18, 15, 18, 15]
-                spacing: 15
+                height: dp(75)
+                padding: [dp(18), dp(15), dp(18), dp(15)]
+                spacing: dp(15)
                 canvas.before:
                     Color:
                         rgba: 0.18, 0.18, 0.18, 1
@@ -246,100 +246,118 @@
 
                 BoxLayout:
                     orientation: 'vertical'
+                    spacing: dp(3)
 
                     Label:
                         text: 'Download Options'
                         bold: True
-                        font_size: '15sp'
-                        color: 1,1,1,1
+                        font_size: sp(15)
+                        color: 1, 1, 1, 1
+                        size_hint_y: None
+                        height: dp(24)
+                        halign: 'left'
+                        text_size: self.size
 
                     Label:
                         text: 'Audio Only (MP3)'
-                        font_size: '13sp'
-                        color: 0.55,0.55,0.55,1
+                        font_size: sp(13)
+                        color: 0.55, 0.55, 0.55, 1
+                        size_hint_y: None
+                        height: dp(22)
+                        halign: 'left'
+                        text_size: self.size
 
                 Switch:
+                    size_hint_x: None
+                    width: dp(70)
                     active: root.audio_only
                     on_active: root.on_audio_toggle(self.active)
 
             Widget:
                 size_hint_y: None
-                height: 15
+                height: dp(15)
 
             # ERROR / SUCCESS
             Label:
                 text: root.error_message if root.error_message else root.success_message
-                font_size: '13sp'
-                color: (1,0.35,0.35,1) if root.error_message else (0.35,0.9,0.45,1)
+                font_size: sp(13)
+                color: (1, 0.35, 0.35, 1) if root.error_message else (0.35, 0.9, 0.45, 1)
                 size_hint_y: None
-                height: 30
+                height: dp(30)
                 opacity: 1 if (root.error_message or root.success_message) else 0
 
             Widget:
                 size_hint_y: None
-                height: 10
+                height: dp(10)
 
             # PROGRESS BAR
             BoxLayout:
                 orientation: 'vertical'
                 size_hint_y: None
-                height: 40 if root.is_loading else 0
+                height: dp(50) if root.is_loading else 0
                 opacity: 1 if root.is_loading else 0
-                spacing: 6
+                spacing: dp(6)
 
                 BoxLayout:
                     size_hint_y: None
-                    height: 10
+                    height: dp(10)
                     canvas.before:
                         Color:
-                            rgba: 0.18,0.18,0.18,1
+                            rgba: 0.18, 0.18, 0.18, 1
                         Rectangle:
                             pos: self.pos
                             size: self.size
                         Color:
-                            rgba: 0.72,0.15,0.15,1
+                            rgba: 0.72, 0.15, 0.15, 1
                         Rectangle:
-                            pos: self.pos
-                            size: self.width*(root.download_progress/100), self.height
+                            pos: self.x, self.y
+                            size: self.width * (root.download_progress / 100), self.height
 
                 Label:
-                    text: f'{int(root.download_progress)}% - {root.current_item}' if root.current_item else 'Preparing...'
-                    font_size: '12sp'
-                    color: 0.75,0.75,0.75,1
+                    text: f'{int(root.download_progress)}%' if not root.current_item else f'{int(root.download_progress)}% - {root.current_item}'
+                    font_size: sp(12)
+                    color: 0.75, 0.75, 0.75, 1
                     size_hint_y: None
-                    height: 20
+                    height: dp(25)
                     halign: 'center'
                     valign: 'middle'
                     text_size: self.size
+                    shorten: True
+                    shorten_from: 'right'
 
             Widget:
                 size_hint_y: None
-                height: 10
+                height: dp(10)
 
             # DOWNLOAD BUTTON
             Button:
                 text: '⏳ Downloading...' if root.is_loading else '📥 Download'
                 size_hint_y: None
-                height: 55
+                height: dp(55)
                 disabled: root.is_loading or root.url_text == ''
                 background_normal: ''
-                background_color: (0.72,0.15,0.15,1) if not self.disabled else (0.28,0.28,0.28,1)
-                color: 1,1,1,1
+                background_color: (0.72, 0.15, 0.15, 1) if not self.disabled else (0.28, 0.28, 0.28, 1)
+                color: 1, 1, 1, 1
                 bold: True
-                font_size: '16sp'
+                font_size: sp(16)
                 on_release: root.start_download()
 
             Widget:
                 size_hint_y: None
-                height: 15
+                height: dp(15)
 
             # FOOTER
             Label:
                 text: 'Paste a YouTube link and select your preferred quality to download.'
-                font_size: '12sp'
-                color: 0.45,0.45,0.45,1
+                font_size: sp(12)
+                color: 0.45, 0.45, 0.45, 1
                 size_hint_y: None
-                height: 35
+                height: dp(40)
                 halign: 'center'
                 valign: 'middle'
                 text_size: self.size
+
+            # Bottom padding for scroll
+            Widget:
+                size_hint_y: None
+                height: dp(20)
