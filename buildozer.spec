@@ -103,7 +103,7 @@ fullscreen = 0
 
 # (list) Permissions
 # (See https://python-for-android.readthedocs.io/en/latest/buildoptions/#build-options-1 for all the supported syntaxes and properties)
-android.permissions = INTERNET,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO,WRITE_EXTERNAL_STORAGE
+android.permissions = INTERNET,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO
 
 
 # (list) features (adds uses-feature -tags to manifest)
@@ -118,6 +118,7 @@ android.targetapi = 33
 
 # (int) Android SDK version to use
 #android.sdk = 20
+android.log_level = 2
 
 # (str) Android NDK version to use
 #android.ndk = 23b
@@ -293,7 +294,7 @@ android.enable_androidx = True
 
 # (list) The Android archs to build for, choices: armeabi-v7a, arm64-v8a, x86, x86_64
 # In past, was `android.arch` as we weren't supporting builds for multiple archs at the same time.
-android.archs = arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
 
 # (int) overrides automatic versionCode computation (used in build.gradle)
 # this is not the same as app version and should only be edited if you know what you're doing
