@@ -197,37 +197,78 @@ class YouTubeDownloader(BoxLayout):
         """Download video/audio using yt-dlp"""
         try:
             output_path = self.audio_path if self.audio_only else self.video_path
-            
-            print("\n" + "="*60)
+
+            print("\n" + "=" * 60)
             print("🚀 DOWNLOAD STARTED")
-            print("="*60)
+            print("=" * 60)
             print(f"URL: {self.url_text}")
             print(f"Mode: {'Audio (MP3)' if self.audio_only else 'Video'}")
             print(f"Quality: {self.quality_selected}")
             print(f"Output Path: {output_path}")
-            
+
+            # Progress hook for UI updates
+            def progress_hook(d):
+                try:
+                    if d['status'] == 'downloading':
+                        if 'downloaded_bytes' in d and 'total_bytes' in d:
+                            percent = (d['downloaded_bytes'] / d['total_bytes']) * 100
+                            Clock.schedule_once(
+                                lambda dt: setattr(self, 'download_progress', percent), 0
+                            )
+
+                        elif 'downloaded_bytes' in d and 'total_bytes_estimate' in d:
+                            percent = (
+                                d['downloaded_bytes'] / d['total_bytes_estimate']
+                            ) * 100
+                            Clock.schedule_once(
+                                lambda dt: setattr(self, 'download_progress', percent), 0
+                            )
+
+                        filename = d.get('filename', '')
+                        if filename:
+                            filename = os.path.basename(filename)
+                            Clock.schedule_once(
+                                lambda dt: setattr(self, 'current_item', filename[:40]), 0
+                            )
+
+                    elif d['status'] == 'finished':
+                        Clock.schedule_once(
+                            lambda dt: setattr(self, 'download_progress', 100), 0
+                        )
+
+                except Exception:
+                    pass
+
             ydl_opts = {
                 'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
                 'quiet': True,
                 'no_warnings': True,
+                'progress_hooks': [progress_hook],
+                'noprogress': False,
             }
-            
+
             if self.is_playlist(self.url_text):
                 ydl_opts['noplaylist'] = False
                 print("📋 Playlist detected - downloading all videos")
-                Clock.schedule_once(lambda dt: setattr(self, 'success_message', 'Downloading playlist...'), 0)
+                Clock.schedule_once(
+                    lambda dt: setattr(self, 'success_message', 'Downloading playlist...'),
+                    0,
+                )
             else:
                 ydl_opts['noplaylist'] = True
                 print("📹 Single video download")
-            
+
             if self.audio_only:
                 ydl_opts['format'] = 'bestaudio/best'
-                ydl_opts['postprocessors'] = [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }]
+                ydl_opts['postprocessors'] = [
+                    {
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }
+                ]
                 ydl_opts['prefer_ffmpeg'] = True
+
             else:
                 if self.quality_selected == 'max':
                     ydl_opts['format'] = 'bestvideo+bestaudio/best'
@@ -237,60 +278,76 @@ class YouTubeDownloader(BoxLayout):
                     ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best[height<=720]'
                 elif self.quality_selected == '480':
                     ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best[height<=480]'
-                
+
                 ydl_opts['merge_output_format'] = 'mp4'
-            
-            print("-"*60)
+
+            print("-" * 60)
             print("⏳ Fetching video information...")
-            
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Get info to count items
                 info = ydl.extract_info(self.url_text, download=False)
-                
+
                 if 'entries' in info:
                     total = len(list(info['entries']))
-                    Clock.schedule_once(lambda dt: setattr(self, 'total_items', total), 0)
+                    Clock.schedule_once(
+                        lambda dt: setattr(self, 'total_items', total), 0
+                    )
                     print(f"📊 Found {total} videos in playlist")
                 else:
-                    Clock.schedule_once(lambda dt: setattr(self, 'total_items', 1), 0)
-                    video_title = info.get('title', 'Unknown')
-                    print(f"📊 Video Title: {video_title}")
-                
-                print("-"*60)
+                    Clock.schedule_once(
+                        lambda dt: setattr(self, 'total_items', 1), 0
+                    )
+                    print(f"📊 Video Title: {info.get('title', 'Unknown')}")
+
+                print("-" * 60)
                 print("⬇️  Starting download...")
-                
-                # Start download
                 ydl.download([self.url_text])
-            
-            print("-"*60)
+
+            print("-" * 60)
             print("✅ Download process completed successfully!")
-            print("="*60 + "\n")
-            
+            print("=" * 60 + "\n")
+
             Clock.schedule_once(lambda dt: self.on_download_success(), 0)
-            
+
         except yt_dlp.utils.DownloadError as e:
             error_msg = str(e)
-            print("\n" + "="*60)
+
+            print("\n" + "=" * 60)
             print("❌ DOWNLOAD ERROR")
-            print("="*60)
+            print("=" * 60)
             print(f"Error: {error_msg}")
-            print("="*60 + "\n")
-            
+            print("=" * 60 + "\n")
+
             if 'Video unavailable' in error_msg:
-                Clock.schedule_once(lambda dt: self.on_download_error('Video is unavailable or private'), 0)
+                Clock.schedule_once(
+                    lambda dt: self.on_download_error('Video is unavailable or private'),
+                    0,
+                )
             elif 'No video formats' in error_msg:
-                Clock.schedule_once(lambda dt: self.on_download_error('Selected quality not available'), 0)
+                Clock.schedule_once(
+                    lambda dt: self.on_download_error('Selected quality not available'),
+                    0,
+                )
             else:
-                Clock.schedule_once(lambda dt: self.on_download_error('Download failed. Check URL'), 0)
+                Clock.schedule_once(
+                    lambda dt: self.on_download_error('Download failed. Check URL'),
+                    0,
+                )
+
         except Exception as e:
             error_message = f'Error: {str(e)[:50]}'
-            print("\n" + "="*60)
+
+            print("\n" + "=" * 60)
             print("❌ UNEXPECTED ERROR")
-            print("="*60)
+            print("=" * 60)
             print(f"Error Type: {type(e).__name__}")
             print(f"Error Message: {e}")
-            print("="*60 + "\n")
-            Clock.schedule_once(lambda dt: self.on_download_error(error_message), 0)
+            print("=" * 60 + "\n")
+
+            Clock.schedule_once(
+                lambda dt: self.on_download_error(error_message), 0
+            )
+
     
     def on_download_success(self):
         """Handle successful download"""
@@ -318,8 +375,11 @@ class YouTubeDownloader(BoxLayout):
         self.url_text = ''
         self.ids.url_input.text = ''
         
+        # Reset progress
+        self.download_progress = 0
+        self.current_item = ''
+        
         Clock.schedule_once(lambda dt: self.clear_success(), 7)
-    
     def on_download_error(self, error):
         """Handle download error"""
         self.is_loading = False

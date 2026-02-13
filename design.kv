@@ -281,6 +281,23 @@
         BoxLayout:
             orientation: 'vertical'
             size_hint_y: None
+            height: 10
+            
+            Label:
+                text: root.error_message if root.error_message else root.success_message
+                font_size: '13sp'
+                color: (1, 0.35, 0.35, 1) if root.error_message else (0.35, 0.9, 0.45, 1)
+                size_hint_y: None
+                height: 10
+                opacity: 1 if (root.error_message or root.success_message) else 0
+        Widget:
+            size_hint_y: None
+            height: 5
+        
+        # Error/Success Messages
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
             height: 30
             
             Label:
@@ -295,15 +312,60 @@
             size_hint_y: None
             height: 15
         
+        # Progress Bar Section (appears when downloading)
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: None
+            height: 40 if root.is_loading else 0
+            opacity: 1 if root.is_loading else 0
+            spacing: 8
+            
+            # Progress bar container
+            BoxLayout:
+                size_hint_y: None
+                height: 10
+                canvas.before:
+                    # Background
+                    Color:
+                        rgba: 0.18, 0.18, 0.18, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+                    # Progress fill
+                    Color:
+                        rgba: 0.72, 0.15, 0.15, 1
+                    Rectangle:
+                        pos: self.x, self.y
+                        size: self.width * (root.download_progress / 100), self.height
+            
+            # Progress text
+            Label:
+                text: f'{int(root.download_progress)}% - {root.current_item}' if root.current_item else f'{int(root.download_progress)}% - Preparing...'
+                font_size: '12sp'
+                color: 0.75, 0.75, 0.75, 1
+                size_hint_y: None
+                height: 10
+                text_size: self.size
+                halign: 'center'
+                valign: 'middle'
+                shorten: True
+                shorten_from: 'right'        
+
+
+        # Download Button Section 
+        Widget:
+            size_hint_y: None
+            height: 10
+        
         # Download Button
         Button:
-            text: (' Download' if not root.is_loading else '  Downloading...')
+            text: ('📥 Download' if not root.is_loading else '⏳ Downloading...')
             size_hint_y: None
             height: 55
             disabled: root.is_loading or root.url_text == ''
             background_normal: ''
             background_color: (0.18, 0.18, 0.18, 1) if not self.disabled else (0.28, 0.28, 0.28, 1)
-            color: 1, 1, 1, 1
+            color: 1, 1, 1, 1 if not self.disabled else (0.5, 0.5, 0.5, 1)
             font_size: '16sp'
             bold: True
             on_release: root.start_download()
