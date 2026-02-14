@@ -46,8 +46,8 @@ requirements = python3,kivy,yt-dlp,requests,urllib3,certifi,charset-normalizer,i
 # requirements.source.kivy = ../../kivy
 
 # (str) Presplash of the application
-#presplash.filename = %(source.dir)s/data/presplash.png
-android.presplash = presplash.png
+presplash.filename = %(source.dir)s/presplash.png
+android.presplash_filename = presplash.png
 android.presplash_color = #000000
 
 # (str) Icon of the application
@@ -110,7 +110,7 @@ android.permissions = INTERNET,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO
 #android.features = android.hardware.usb.host
 
 # (int) Target Android API, should be as high as possible.
-#android.api = 31
+android.api = 33
 
 # (int) Minimum API your APK / AAB will support.
 android.minapi = 21
@@ -147,7 +147,7 @@ android.log_level = 2
 # agreements. This is intended for automation only. If set to False,
 # the default, you will be shown the license when first running
 # buildozer.
-# android.accept_sdk_license = False
+android.accept_sdk_license = True
 
 # (str) Android entry point, default is ok for Kivy-based app
 #android.entrypoint = org.kivy.android.PythonActivity
