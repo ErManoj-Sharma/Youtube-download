@@ -26,3 +26,9 @@ buildozer android clean
 buildozer -v android debug
 ```
 This will create a debug apk in the bin directory. You can find the apk at `bin/YoutubeDownloader-0.1-debug.apk`    
+
+## To fix ffmpeg
+we use python for android ffmpeg recepie , by this we directly enable ffmpeg in android
+```
+https://github.com/kivy/python-for-android/tree/develop/pythonforandroid/recipes/ffmpeg
+```
