@@ -79,6 +79,21 @@ def get_ffmpeg_bin():
     return _ffmpeg_bin_cache
 
 
+def format_size(bytes_count):
+    """
+    Convert a byte count into a human-readable string.
+    e.g. 1024 → '1.0 KB', 1048576 → '1.0 MB', 1073741824 → '1.0 GB'
+    """
+    if bytes_count <= 0:
+        return '0 KB'
+    elif bytes_count < 1024 * 1024:
+        return f'{bytes_count / 1024:.1f} KB'
+    elif bytes_count < 1024 * 1024 * 1024:
+        return f'{bytes_count / (1024 * 1024):.1f} MB'
+    else:
+        return f'{bytes_count / (1024 * 1024 * 1024):.2f} GB'
+
+
 # ── yt-dlp logger ──────────────────────────────────────────────────────────────
 class YTDLPLogger:
     def debug(self, msg):
@@ -112,6 +127,8 @@ class YouTubeDownloader(BoxLayout):
     download_progress = NumericProperty(0)
     current_item = StringProperty('')
     total_items = NumericProperty(0)
+    # ── NEW: human-readable downloaded size e.g. '12.4 MB / 98.1 MB' ──────────
+    download_size = StringProperty('')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -134,19 +151,36 @@ class YouTubeDownloader(BoxLayout):
             self.setup_storage()
 
     def on_permissions_result(self, permissions, grants):
-        """
-        Called after user grants or denies permissions.
-        Always proceed to setup_storage — Environment.DIRECTORY_DOWNLOADS
-        works on API 29+ even without WRITE_EXTERNAL_STORAGE.
-        """
         for perm, granted in zip(permissions, grants):
-            status = "GRANTED" if granted else "DENIED"
-            print(f"[Permissions] {perm.split('.')[-1]}: {status}")
-
-        if not all(grants):
-            print("[Permissions] Some permissions denied — downloads may fail on older devices")
-
-        # Always setup storage regardless of result
+            print(f"[Permissions] {perm.split('.')[-1]}: {'GRANTED' if granted else 'DENIED'}")
+    
+        if ANDROID:
+            try:
+                from jnius import autoclass
+                Environment = autoclass('android.os.Environment')
+                Build = autoclass('android.os.Build')
+    
+                # Android 11 (API 30) specific fix
+                # isExternalStorageManager() only exists on API 30+
+                if Build.VERSION.SDK_INT >= 30:
+                    if not Environment.isExternalStorageManager():
+                        # Send user to Settings to grant All Files Access
+                        Intent = autoclass('android.content.Intent')
+                        Settings = autoclass('android.provider.Settings')
+                        Uri = autoclass('android.net.Uri')
+                        intent = Intent(
+                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
+                        )
+                        # Deep link directly to YOUR app's settings page
+                        intent.setData(
+                            Uri.parse('package:org.ytdl.ytdlapp')
+                        )
+                        mActivity.startActivity(intent)
+                        print("[Permissions] Android 11: Sent to All Files Access settings")
+                # API 29 and below — requestLegacyExternalStorage handles it
+            except Exception as e:
+                print(f"[Permissions] Storage manager check: {e}")
+    
         self.setup_storage()
 
     # ── Storage setup ──────────────────────────────────────────────────────────
@@ -321,6 +355,7 @@ class YouTubeDownloader(BoxLayout):
 
         self.is_loading = True
         self.download_progress = 0
+        self.download_size = ''      # ← reset size on new download
         self.total_items = 0
 
         thread = threading.Thread(target=self.download_video, daemon=True)
@@ -354,11 +389,28 @@ class YouTubeDownloader(BoxLayout):
                             Clock.schedule_once(
                                 lambda dt: setattr(self, 'download_progress', percent), 0
                             )
+
+                        # ── Size string — e.g. '23.4 MB / 98.1 MB' ──────────
+                        # If total is known show "downloaded / total"
+                        # If total unknown (live streams etc) show just downloaded
+                        if total:
+                            size_str = f'{format_size(downloaded)} / {format_size(total)}'
+                        elif downloaded:
+                            size_str = format_size(downloaded)
+                        else:
+                            size_str = ''
+
+                        if size_str:
+                            Clock.schedule_once(
+                                lambda dt, s=size_str: setattr(self, 'download_size', s), 0
+                            )
+
+                        # Filename
                         filename = d.get('filename', '')
                         if filename:
-                            short_name = os.path.basename(filename)[:40]
+                            short_name = os.path.basename(filename)[:35]
                             Clock.schedule_once(
-                                lambda dt: setattr(self, 'current_item', short_name), 0
+                                lambda dt, n=short_name: setattr(self, 'current_item', n), 0
                             )
                     elif d['status'] == 'finished':
                         Clock.schedule_once(
@@ -435,9 +487,6 @@ class YouTubeDownloader(BoxLayout):
 
                 else:
                     # Desktop: merge best video + audio into mp4
-                    ffmpeg = get_ffmpeg_bin()
-                    ydl_opts['format'] = desktop_fmt
-                    ydl_opts['ffmpeg_location'] = ffmpeg
                     ydl_opts['merge_output_format'] = 'mp4'
                     print(f"Desktop: Merging video+audio (format: {desktop_fmt})")
 
@@ -449,8 +498,7 @@ class YouTubeDownloader(BoxLayout):
                 info = ydl.extract_info(self.url_text, download=False)
 
                 if info and 'entries' in info:
-                    entries = list(info['entries'])
-                    total = len(entries)
+                    total = len(list(info['entries']))
                     Clock.schedule_once(
                         lambda dt: setattr(self, 'total_items', total), 0
                     )
@@ -541,6 +589,7 @@ class YouTubeDownloader(BoxLayout):
         self.url_text = ''
         self.ids.url_input.text = ''
         self.download_progress = 0
+        self.download_size = ''
         self.current_item = ''
 
         Clock.schedule_once(lambda dt: self.clear_success(), 7)
@@ -551,6 +600,7 @@ class YouTubeDownloader(BoxLayout):
         self.error_message = error
         self.success_message = ''
         self.download_progress = 0
+        self.download_size = ''
         print(f"[Error displayed to user] {error}")
 
     def clear_success(self):
