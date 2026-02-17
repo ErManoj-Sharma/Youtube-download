@@ -213,7 +213,6 @@
                         disabled: root.audio_only
                         on_release: root.on_quality_select('480')
                         background_color: (0.18, 0.18, 0.18, 1) if not self.disabled else (0.28, 0.28, 0.28, 1)
-                        # text-color
                         color: 1, 1, 1, 1 if not self.disabled else (0.4, 0.4, 0.4, 1)
                         canvas.before:
                             Color:
@@ -290,14 +289,17 @@
                 size_hint_y: None
                 height: dp(10)
 
-            # PROGRESS BAR
+            # ── PROGRESS SECTION ───────────────────────────────────────────────
+            # Shows: progress bar + percentage line + size line
+            # Height expands when downloading, collapses to 0 otherwise.
             BoxLayout:
                 orientation: 'vertical'
                 size_hint_y: None
-                height: dp(50) if root.is_loading else 0
+                height: dp(72) if root.is_loading else 0
                 opacity: 1 if root.is_loading else 0
-                spacing: dp(6)
+                spacing: dp(5)
 
+                # Progress bar track + fill
                 BoxLayout:
                     size_hint_y: None
                     height: dp(10)
@@ -313,17 +315,30 @@
                             pos: self.x, self.y
                             size: self.width * (root.download_progress / 100), self.height
 
+                # Row 1 — percentage + filename
                 Label:
-                    text: f'{int(root.download_progress)}%' if not root.current_item else f'{int(root.download_progress)}% - {root.current_item}'
+                    text: (f'{int(root.download_progress)}%' if not root.current_item else f'{int(root.download_progress)}%  ·  {root.current_item}')
                     font_size: sp(12)
-                    color: 0.75, 0.75, 0.75, 1
+                    color: 0.85, 0.85, 0.85, 1
                     size_hint_y: None
-                    height: dp(25)
+                    height: dp(22)
                     halign: 'center'
                     valign: 'middle'
                     text_size: self.size
                     shorten: True
                     shorten_from: 'right'
+
+                # Row 2 — downloaded size  e.g. "23.4 MB / 98.1 MB"
+                Label:
+                    text: root.download_size
+                    font_size: sp(12)
+                    color: 0.55, 0.55, 0.55, 1
+                    size_hint_y: None
+                    height: dp(20)
+                    halign: 'center'
+                    valign: 'middle'
+                    text_size: self.size
+                    opacity: 1 if root.download_size else 0
 
             Widget:
                 size_hint_y: None
