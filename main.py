@@ -435,9 +435,6 @@ class YouTubeDownloader(BoxLayout):
 
                 else:
                     # Desktop: merge best video + audio into mp4
-                    ffmpeg = get_ffmpeg_bin()
-                    ydl_opts['format'] = desktop_fmt
-                    ydl_opts['ffmpeg_location'] = ffmpeg
                     ydl_opts['merge_output_format'] = 'mp4'
                     print(f"Desktop: Merging video+audio (format: {desktop_fmt})")
 
