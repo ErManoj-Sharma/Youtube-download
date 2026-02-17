@@ -151,28 +151,35 @@ class YouTubeDownloader(BoxLayout):
             self.setup_storage()
 
     def on_permissions_result(self, permissions, grants):
-        """
-        Called after user grants or denies permissions.
-        Always proceed to setup_storage — Environment.DIRECTORY_DOWNLOADS
-        works on API 29+ even without WRITE_EXTERNAL_STORAGE.
-        """
         for perm, granted in zip(permissions, grants):
             print(f"[Permissions] {perm.split('.')[-1]}: {'GRANTED' if granted else 'DENIED'}")
     
         if ANDROID:
-            # On API 30+, check if we have full storage access
-            # If not, open system settings to let user grant it
             try:
                 from jnius import autoclass
                 Environment = autoclass('android.os.Environment')
-                if not Environment.isExternalStorageManager():
-                    Intent = autoclass('android.content.Intent')
-                    Settings = autoclass('android.provider.Settings')
-                    intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    mActivity.startActivity(intent)
-                    print("[Permissions] Redirected to storage manager settings")
+                Build = autoclass('android.os.Build')
+    
+                # Android 11 (API 30) specific fix
+                # isExternalStorageManager() only exists on API 30+
+                if Build.VERSION.SDK_INT >= 30:
+                    if not Environment.isExternalStorageManager():
+                        # Send user to Settings to grant All Files Access
+                        Intent = autoclass('android.content.Intent')
+                        Settings = autoclass('android.provider.Settings')
+                        Uri = autoclass('android.net.Uri')
+                        intent = Intent(
+                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
+                        )
+                        # Deep link directly to YOUR app's settings page
+                        intent.setData(
+                            Uri.parse('package:org.ytdl.ytdlapp')
+                        )
+                        mActivity.startActivity(intent)
+                        print("[Permissions] Android 11: Sent to All Files Access settings")
+                # API 29 and below — requestLegacyExternalStorage handles it
             except Exception as e:
-                print(f"[Permissions] Storage manager check failed: {e}")
+                print(f"[Permissions] Storage manager check: {e}")
     
         self.setup_storage()
 

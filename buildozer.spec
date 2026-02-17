@@ -103,7 +103,7 @@ fullscreen = 0
 
 # (list) Permissions
 # (See https://python-for-android.readthedocs.io/en/latest/buildoptions/#build-options-1 for all the supported syntaxes and properties)
-android.permissions = INTERNET,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO,WRITE_EXTERNAL_STORAGE
+android.permissions = INTERNET,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO
 
 
 # (list) features (adds uses-feature -tags to manifest)
