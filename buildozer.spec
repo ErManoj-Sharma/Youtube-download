@@ -30,7 +30,7 @@ source.include_exts = py,kv,png,jpg,ttf
 #source.exclude_patterns = license,images/*/*.jpg
 
 # (str) Application versioning (method 1)
-version = 0.1
+version = 1.3
 
 # (str) Application versioning (method 2)
 # version.regex = __version__ = ['"](.*)['"]
@@ -38,7 +38,7 @@ version = 0.1
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy,yt-dlp,requests,urllib3,certifi,charset-normalizer,idna,filetype,ffmpeg
+requirements = python3,kivy,ffmpeg,yt-dlp,requests,urllib3,certifi,charset-normalizer,idna,filetype
 
 
 # (str) Custom source folders for requirements
@@ -46,8 +46,8 @@ requirements = python3,kivy,yt-dlp,requests,urllib3,certifi,charset-normalizer,i
 # requirements.source.kivy = ../../kivy
 
 # (str) Presplash of the application
-#presplash.filename = %(source.dir)s/data/presplash.png
-android.presplash = presplash.png
+presplash.filename = %(source.dir)s/presplash.png
+android.presplash_filename = presplash.png
 android.presplash_color = #000000
 
 # (str) Icon of the application
@@ -103,14 +103,14 @@ fullscreen = 0
 
 # (list) Permissions
 # (See https://python-for-android.readthedocs.io/en/latest/buildoptions/#build-options-1 for all the supported syntaxes and properties)
-android.permissions = INTERNET,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO
+android.permissions = INTERNET,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO,WRITE_EXTERNAL_STORAGE
 
 
 # (list) features (adds uses-feature -tags to manifest)
 #android.features = android.hardware.usb.host
 
 # (int) Target Android API, should be as high as possible.
-#android.api = 31
+android.api = 33
 
 # (int) Minimum API your APK / AAB will support.
 android.minapi = 21
@@ -147,7 +147,7 @@ android.log_level = 2
 # agreements. This is intended for automation only. If set to False,
 # the default, you will be shown the license when first running
 # buildozer.
-# android.accept_sdk_license = False
+android.accept_sdk_license = True
 
 # (str) Android entry point, default is ok for Kivy-based app
 #android.entrypoint = org.kivy.android.PythonActivity
@@ -326,8 +326,8 @@ android.allow_backup = True
 #
 
 # (str) python-for-android URL to use for checkout
+p4a.local_recipes = ./recipes
 #p4a.url =
-
 # (str) python-for-android fork to use in case if p4a.url is not specified, defaults to upstream (kivy)
 #p4a.fork = kivy
 
