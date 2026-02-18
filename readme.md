@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="images/splash.png" alt="YouTube Downloader" width="300"/>
+<img src="icon.png" alt="YouTube Downloader" width="120" style="border-radius: 50%;"/>
 
 # YouTube Downloader
 
