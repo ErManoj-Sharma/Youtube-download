@@ -1,6 +1,13 @@
 <div align="center">
 
-<img src="icon.png" alt="YouTube Downloader" width="120" style="border-radius: 50%;"/>
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="circle">
+      <circle cx="60" cy="60" r="60"/>
+    </clipPath>
+  </defs>
+  <image href="icon.png" width="120" height="120" clip-path="url(#circle)"/>
+</svg>
 
 # YouTube Downloader
 
