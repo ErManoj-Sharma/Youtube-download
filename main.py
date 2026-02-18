@@ -13,9 +13,15 @@ Fixes applied:
   - LD_LIBRARY_PATH set safely, preserving existing entries
   - merge_output_format only applied when ffmpeg is used
   - ffmpeg_location passed explicitly to yt-dlp on both platforms
+
+New features:
+  - Pause / Continue button during download (pauses the download thread)
+  - Cancel button with confirmation dialog — also deletes .part files on disk
+  - Resume continues from where it stopped (yt-dlp --continue flag)
 """
 
 import os
+import glob
 import threading
 import subprocess
 from pathlib import Path
@@ -23,6 +29,9 @@ from urllib.parse import urlparse
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.popup import Popup
+from kivy.uix.label import Label
+from kivy.uix.button import Button
 from kivy.clock import Clock
 from kivy.properties import StringProperty, BooleanProperty, NumericProperty
 from kivy.lang import Builder
@@ -49,6 +58,91 @@ import yt_dlp
 # ── FFmpeg binary — lazy resolution ────────────────────────────────────────────
 _ffmpeg_bin_cache = None
 
+
+def _find_ffmpeg_on_desktop():
+    """
+    Search for ffmpeg in all common locations on Windows, WSL, and Linux/macOS.
+    Returns the full path string if found, or None if not found anywhere.
+    """
+    import shutil
+
+    # 1. System PATH first (fastest check)
+    found = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+    if found:
+        print(f"[FFmpeg] Found on PATH: {found}")
+        return found
+
+    candidates = []
+
+    # 2. Native Windows absolute paths
+    win_subdirs = [
+        "ffmpeg/bin/ffmpeg.exe",
+        "ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe",
+        "Program Files/ffmpeg/bin/ffmpeg.exe",
+        "Program Files (x86)/ffmpeg/bin/ffmpeg.exe",
+        "ProgramData/chocolatey/bin/ffmpeg.exe",
+        "tools/ffmpeg/bin/ffmpeg.exe",
+    ]
+    for drive in ["C:", "D:"]:
+        for sub in win_subdirs:
+            candidates.append(os.path.join(drive + os.sep, sub))
+
+    # Scoop (per-user Windows)
+    userprofile = os.environ.get("USERPROFILE", "")
+    if userprofile:
+        candidates.append(os.path.join(userprofile, "scoop", "shims", "ffmpeg.exe"))
+        candidates.append(os.path.join(userprofile, "scoop", "apps", "ffmpeg", "current", "bin", "ffmpeg.exe"))
+
+    # Conda / Miniconda
+    conda_base = os.environ.get("CONDA_PREFIX", "") or os.environ.get("CONDA_DIR", "")
+    if conda_base:
+        candidates.append(os.path.join(conda_base, "bin", "ffmpeg"))
+        candidates.append(os.path.join(conda_base, "Library", "bin", "ffmpeg.exe"))
+
+    # 3. WSL — Windows drives mounted under /mnt/c, /mnt/d
+    for mnt_drive in ["c", "d"]:
+        base = f"/mnt/{mnt_drive}"
+        if os.path.isdir(base):
+            for sub in win_subdirs:
+                wsl_sub = sub.replace("\\", "/")
+                candidates.append(f"{base}/{wsl_sub}")
+
+    # 4. Common Linux / macOS locations
+    candidates.extend([
+        "/usr/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/Cellar/ffmpeg/bin/ffmpeg",
+        "/snap/bin/ffmpeg",
+        "/opt/ffmpeg/bin/ffmpeg",
+        os.path.expanduser("~/.local/bin/ffmpeg"),
+        os.path.expanduser("~/bin/ffmpeg"),
+    ])
+
+    # Check each candidate
+    for path in candidates:
+        if os.path.isfile(path):
+            try:
+                result = subprocess.run([path, "-version"], capture_output=True, timeout=3)
+                if result.returncode == 0:
+                    print(f"[FFmpeg] Found at: {path}")
+                    return path
+            except Exception:
+                continue
+
+    print("[FFmpeg] Not found in any known location")
+    return None
+
+
+FFMPEG_INSTALL_HELP = (
+    "ffmpeg not found. Please install it:\n"
+    "  Windows : winget install ffmpeg   (or: choco install ffmpeg)\n"
+    "  Ubuntu  : sudo apt install ffmpeg\n"
+    "  macOS   : brew install ffmpeg\n"
+    "Then restart the app."
+)
+
+
 def get_ffmpeg_bin():
     """
     Returns the path to the ffmpeg binary.
@@ -73,8 +167,11 @@ def get_ffmpeg_bin():
         print(f"[FFmpeg] Binary: {_ffmpeg_bin_cache}")
         print(f"[FFmpeg] LD_LIBRARY_PATH: {os.environ['LD_LIBRARY_PATH']}")
     else:
-        _ffmpeg_bin_cache = "ffmpeg"
-        print("[FFmpeg] Using system ffmpeg from PATH")
+        found = _find_ffmpeg_on_desktop()
+        if not found:
+            raise RuntimeError(FFMPEG_INSTALL_HELP)
+        _ffmpeg_bin_cache = found
+        print(f"[FFmpeg] Using: {_ffmpeg_bin_cache}")
 
     return _ffmpeg_bin_cache
 
@@ -121,6 +218,7 @@ class YouTubeDownloader(BoxLayout):
     quality_selected = StringProperty('max')
     audio_only = BooleanProperty(False)
     is_loading = BooleanProperty(False)
+    is_paused = BooleanProperty(False)
     error_message = StringProperty('')
     success_message = StringProperty('')
 
@@ -132,6 +230,20 @@ class YouTubeDownloader(BoxLayout):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        # ── Pause / Cancel control primitives ─────────────────────────────────
+        # _pause_event: cleared = paused, set = running
+        self._pause_event = threading.Event()
+        self._pause_event.set()          # start in "running" state
+
+        # _cancel_flag: set to True to request cancellation
+        self._cancel_flag = False
+
+        # Track the active download thread so we can join it on cancel
+        self._download_thread = None
+
+        # Track the current output path for .part file cleanup
+        self._current_output_path = None
 
         if ANDROID:
             # Request permissions WITH callback.
@@ -180,7 +292,7 @@ class YouTubeDownloader(BoxLayout):
                 # API 29 and below — requestLegacyExternalStorage handles it
             except Exception as e:
                 print(f"[Permissions] Storage manager check: {e}")
-    
+
         self.setup_storage()
 
     # ── Storage setup ──────────────────────────────────────────────────────────
@@ -342,6 +454,176 @@ class YouTubeDownloader(BoxLayout):
         if active:
             self.quality_selected = 'max'
 
+    # ── Pause / Resume ─────────────────────────────────────────────────────────
+
+    def on_pause_resume_click(self):
+        """Toggle between paused and running state."""
+        if self.is_paused:
+            # Resume — let the download thread continue
+            self.is_paused = False
+            self._pause_event.set()
+            print("[Control] Download RESUMED")
+        else:
+            # Pause — block the download thread at next checkpoint
+            self.is_paused = True
+            self._pause_event.clear()
+            print("[Control] Download PAUSED")
+
+    # ── Cancel with confirmation ───────────────────────────────────────────────
+
+    def on_cancel_click(self):
+        """Show a well-spaced Android-friendly confirmation popup."""
+        from kivy.metrics import dp, sp
+
+        # ── Message label ──────────────────────────────────────────────────────
+        msg = Label(
+            text='Cancel the current download?\nThe incomplete file will be deleted.',
+            font_size=sp(15),
+            color=(0.88, 0.88, 0.88, 1),
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(72),
+        )
+        msg.bind(size=msg.setter('text_size'))
+
+        # ── Thin red divider between message and buttons ───────────────────────
+        divider = BoxLayout(
+            size_hint_y=None,
+            height=dp(1),
+        )
+        with divider.canvas.before:
+            from kivy.graphics import Color as GColor, Rectangle as GRect
+            GColor(0.72, 0.15, 0.15, 1)
+            divider._rect = GRect(pos=divider.pos, size=divider.size)
+        def _update_div(instance, value):
+            instance._rect.pos  = instance.pos
+            instance._rect.size = instance.size
+        divider.bind(pos=_update_div, size=_update_div)
+
+        # ── Buttons ────────────────────────────────────────────────────────────
+        btn_no = Button(
+            text='No',
+            background_normal='',
+            background_color=(0.20, 0.20, 0.20, 1),
+            color=(0.88, 0.88, 0.88, 1),
+            font_size=sp(15),
+            bold=True,
+            size_hint_y=None,
+            height=dp(54),
+        )
+
+        btn_yes = Button(
+            text='Yes, Cancel',
+            background_normal='',
+            background_color=(0.72, 0.15, 0.15, 1),
+            color=(1, 1, 1, 1),
+            font_size=sp(15),
+            bold=True,
+            size_hint_y=None,
+            height=dp(54),
+        )
+
+        btn_row = BoxLayout(
+            orientation='horizontal',
+            spacing=dp(10),
+            size_hint_y=None,
+            height=dp(54),
+        )
+        btn_row.add_widget(btn_no)
+        btn_row.add_widget(btn_yes)
+
+        # ── Assemble content ───────────────────────────────────────────────────
+        content = BoxLayout(
+            orientation='vertical',
+            padding=[dp(20), dp(18), dp(20), dp(18)],
+            spacing=dp(14),
+        )
+        content.add_widget(msg)
+        content.add_widget(divider)
+        content.add_widget(btn_row)
+
+        # ── Popup ──────────────────────────────────────────────────────────────
+        # height = top_padding + msg + divider + spacing*2 + btn + bottom_padding
+        total_h = dp(18) + dp(72) + dp(1) + dp(14)*2 + dp(54) + dp(18)
+
+        popup = Popup(
+            title='Cancel Download',
+            title_color=(1, 1, 1, 1),
+            title_size=sp(16),
+            title_align='center',
+            content=content,
+            size_hint=(0.86, None),
+            height=total_h + dp(48),   # +48 for Popup's own title bar
+            background='',
+            background_color=(0.12, 0.12, 0.12, 1),
+            separator_color=(0.72, 0.15, 0.15, 1),
+            separator_height=dp(2),
+            auto_dismiss=False,
+        )
+
+        btn_no.bind(on_release=lambda _: popup.dismiss())
+        btn_yes.bind(on_release=lambda _: self._confirm_cancel(popup))
+
+        popup.open()
+
+    def _confirm_cancel(self, popup):
+        """User confirmed cancel — stop download and clean up."""
+        popup.dismiss()
+        print("[Control] Download CANCELLED by user")
+
+        # 1. Signal cancellation to the download thread
+        self._cancel_flag = True
+
+        # 2. If paused, unblock the thread so it can exit cleanly
+        self._pause_event.set()
+
+        # 3. UI resets immediately (thread will also reset on exit)
+        self._reset_download_state()
+
+        # 4. Clean up .part files on a short delay so the thread has time to stop
+        Clock.schedule_once(lambda dt: self._cleanup_part_files(), 1.5)
+
+    def _cleanup_part_files(self):
+        """Delete any .part or .ytdl files left by the cancelled download."""
+        if not self._current_output_path:
+            return
+        try:
+            patterns = [
+                os.path.join(self._current_output_path, '*.part'),
+                os.path.join(self._current_output_path, '*.ytdl'),
+                os.path.join(self._current_output_path, '*.part-Frag*'),
+            ]
+            deleted = []
+            for pattern in patterns:
+                for f in glob.glob(pattern):
+                    try:
+                        os.remove(f)
+                        deleted.append(os.path.basename(f))
+                        print(f"[Cleanup] Deleted: {f}")
+                    except Exception as del_err:
+                        print(f"[Cleanup] Could not delete {f}: {del_err}")
+
+            if deleted:
+                print(f"[Cleanup] Removed {len(deleted)} temp file(s)")
+            else:
+                print("[Cleanup] No .part files found")
+
+        except Exception as e:
+            print(f"[Cleanup] Error: {e}")
+
+    def _reset_download_state(self):
+        """Reset all download-related UI properties."""
+        self.is_loading = False
+        self.is_paused = False
+        self.download_progress = 0
+        self.download_size = ''
+        self.current_item = ''
+        self.error_message = ''
+        self.success_message = ''
+        # Re-arm pause event for next download
+        self._pause_event.set()
+
     # ── Download logic ─────────────────────────────────────────────────────────
 
     def start_download(self):
@@ -353,21 +635,27 @@ class YouTubeDownloader(BoxLayout):
             self.error_message = 'Please enter a valid YouTube URL'
             return
 
+        # Reset control flags for fresh download
+        self._cancel_flag = False
+        self._pause_event.set()   # ensure not paused from previous session
+
         self.is_loading = True
+        self.is_paused = False
         self.download_progress = 0
         self.download_size = ''      # ← reset size on new download
         self.total_items = 0
 
-        thread = threading.Thread(target=self.download_video, daemon=True)
-        thread.start()
+        self._download_thread = threading.Thread(target=self.download_video, daemon=True)
+        self._download_thread.start()
 
     def download_video(self):
         """
         Core download worker — runs on background thread.
-        Builds yt-dlp options based on platform and user selections.
+        Checks _cancel_flag and _pause_event on every progress tick.
         """
         try:
             output_path = self.audio_path if self.audio_only else self.video_path
+            self._current_output_path = output_path   # for .part cleanup
 
             print("\n" + "=" * 60)
             print("DOWNLOAD STARTED")
@@ -380,6 +668,20 @@ class YouTubeDownloader(BoxLayout):
 
             # ── Progress hook ──────────────────────────────────────────────────
             def progress_hook(d):
+                # ── Cancel checkpoint ──────────────────────────────────────────
+                # Raising DownloadCancelled (or any exception) from inside the
+                # hook aborts the current download immediately.
+                if self._cancel_flag:
+                    raise yt_dlp.utils.DownloadCancelled("User cancelled")
+
+                # ── Pause checkpoint ──────────────────────────────────────────
+                # _pause_event.wait() blocks here until the event is set again.
+                # We poll in 0.2 s intervals so we can also react to cancel.
+                while not self._pause_event.is_set():
+                    if self._cancel_flag:
+                        raise yt_dlp.utils.DownloadCancelled("User cancelled while paused")
+                    self._pause_event.wait(timeout=0.2)
+
                 try:
                     if d['status'] == 'downloading':
                         downloaded = d.get('downloaded_bytes', 0)
@@ -416,6 +718,8 @@ class YouTubeDownloader(BoxLayout):
                         Clock.schedule_once(
                             lambda dt: setattr(self, 'download_progress', 100), 0
                         )
+                except yt_dlp.utils.DownloadCancelled:
+                    raise
                 except Exception as hook_err:
                     print(f"[Progress hook] Error: {hook_err}")
 
@@ -429,6 +733,8 @@ class YouTubeDownloader(BoxLayout):
                 'noprogress': False,
                 'ignoreerrors': False,
                 'nocheckcertificate': True,
+                # Allow resuming interrupted downloads
+                'continuedl': True,
             }
 
             # ── Playlist handling ──────────────────────────────────────────────
@@ -486,7 +792,7 @@ class YouTubeDownloader(BoxLayout):
                     print(f"Android: Merging via ffmpeg_bin (format: {desktop_fmt})")
 
                 else:
-                    # Desktop: merge best video + audio into mp4
+                    ydl_opts['format'] = desktop_fmt
                     ydl_opts['merge_output_format'] = 'mp4'
                     print(f"Desktop: Merging video+audio (format: {desktop_fmt})")
 
@@ -496,6 +802,9 @@ class YouTubeDownloader(BoxLayout):
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(self.url_text, download=False)
+
+                if self._cancel_flag:
+                    return
 
                 if info and 'entries' in info:
                     total = len(list(info['entries']))
@@ -514,6 +823,9 @@ class YouTubeDownloader(BoxLayout):
                 print("Starting download...")
                 ydl.download([self.url_text])
 
+            if self._cancel_flag:
+                return
+
             print("-" * 60)
             print("Download completed successfully!")
             print("=" * 60 + "\n")
@@ -521,6 +833,18 @@ class YouTubeDownloader(BoxLayout):
             Clock.schedule_once(lambda dt: self.on_download_success(), 0)
 
         # ── Error handling ─────────────────────────────────────────────────────
+        # ── Cancelled ─────────────────────────────────────────────────────────
+        except yt_dlp.utils.DownloadCancelled:
+            print("[Control] Download thread exited after cancel")
+            # UI was already reset in _confirm_cancel; nothing more to do here.
+
+        # ── ffmpeg not installed ───────────────────────────────────────────────
+        except RuntimeError as e:
+            msg = str(e)
+            print(f"[FFmpeg] {msg}")
+            Clock.schedule_once(lambda dt: self.on_download_error(msg), 0)
+
+        # ── yt-dlp errors ─────────────────────────────────────────────────────
         except yt_dlp.utils.DownloadError as e:
             error_msg = str(e)
             print("\n" + "=" * 60)
@@ -528,6 +852,9 @@ class YouTubeDownloader(BoxLayout):
             print("=" * 60)
             print(f"Full error: {error_msg}")
             print("=" * 60 + "\n")
+
+            if self._cancel_flag:
+                return
 
             if 'Video unavailable' in error_msg:
                 user_msg = 'Video is unavailable or private'
@@ -552,6 +879,9 @@ class YouTubeDownloader(BoxLayout):
             print(f"Traceback:\n{traceback.format_exc()}")
             print("=" * 60 + "\n")
 
+            if self._cancel_flag:
+                return
+
             user_msg = f'{type(e).__name__}: {str(e)[:60]}'
             Clock.schedule_once(
                 lambda dt: self.on_download_error(user_msg), 0
@@ -562,6 +892,7 @@ class YouTubeDownloader(BoxLayout):
     def on_download_success(self):
         """Called on main thread after successful download"""
         self.is_loading = False
+        self.is_paused = False
         self.error_message = ''
 
         file_type = 'Audio' if self.audio_only else 'Video'
@@ -597,6 +928,7 @@ class YouTubeDownloader(BoxLayout):
     def on_download_error(self, error):
         """Called on main thread when download fails"""
         self.is_loading = False
+        self.is_paused = False
         self.error_message = error
         self.success_message = ''
         self.download_progress = 0

@@ -290,8 +290,6 @@
                 height: dp(10)
 
             # ── PROGRESS SECTION ───────────────────────────────────────────────
-            # Shows: progress bar + percentage line + size line
-            # Height expands when downloading, collapses to 0 otherwise.
             BoxLayout:
                 orientation: 'vertical'
                 size_hint_y: None
@@ -310,16 +308,17 @@
                             pos: self.pos
                             size: self.size
                         Color:
-                            rgba: 0.72, 0.15, 0.15, 1
+                            # Red when downloading, amber when paused
+                            rgba: (0.85, 0.55, 0.05, 1) if root.is_paused else (0.72, 0.15, 0.15, 1)
                         Rectangle:
                             pos: self.x, self.y
                             size: self.width * (root.download_progress / 100), self.height
 
-                # Row 1 — percentage + filename
+                # Row 1 — status label + percentage + filename
                 Label:
-                    text: (f'{int(root.download_progress)}%' if not root.current_item else f'{int(root.download_progress)}%  ·  {root.current_item}')
+                    text: ('⏸  Paused  ·  ' if root.is_paused else '') + (f'{int(root.download_progress)}%' if not root.current_item else f'{int(root.download_progress)}%  ·  {root.current_item}')
                     font_size: sp(12)
-                    color: 0.85, 0.85, 0.85, 1
+                    color: (0.85, 0.65, 0.2, 1) if root.is_paused else (0.85, 0.85, 0.85, 1)
                     size_hint_y: None
                     height: dp(22)
                     halign: 'center'
@@ -344,11 +343,16 @@
                 size_hint_y: None
                 height: dp(10)
 
-            # DOWNLOAD BUTTON
+            # ── BUTTON AREA ────────────────────────────────────────────────────
+            # Shows the Download button when idle.
+            # Shows Pause/Continue + Cancel side-by-side when downloading.
+
+            # -- IDLE: single Download button --
             Button:
-                text: '⏳ Downloading...' if root.is_loading else '📥 Download'
+                text: 'V  Download'
                 size_hint_y: None
-                height: dp(55)
+                height: dp(55) if not root.is_loading else 0
+                opacity: 0 if root.is_loading else 1
                 disabled: root.is_loading or root.url_text == ''
                 background_normal: ''
                 background_color: (0.72, 0.15, 0.15, 1) if not self.disabled else (0.28, 0.28, 0.28, 1)
@@ -357,13 +361,53 @@
                 font_size: sp(16)
                 on_release: root.start_download()
 
+            # -- ACTIVE: Pause/Continue  +  Cancel --
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_y: None
+                height: dp(55) if root.is_loading else 0
+                opacity: 1 if root.is_loading else 0
+                spacing: dp(12)
+
+                # ── Pause / Continue button ────────────────────────────────────
+                Button:
+                    text: '|>  Continue' if root.is_paused else '||  Pause'
+                    background_normal: ''
+                    background_color: (0.18, 0.55, 0.18, 1) if root.is_paused else (0.20, 0.38, 0.65, 1)
+                    color: 1, 1, 1, 1
+                    bold: True
+                    font_size: sp(15)
+                    on_release: root.on_pause_resume_click()
+                    canvas.before:
+                        Color:
+                            rgba: (0.18, 0.55, 0.18, 1) if root.is_paused else (0.20, 0.38, 0.65, 1)
+                        Rectangle:
+                            pos: self.pos
+                            size: self.size
+
+                # ── Cancel button ─────────────────────────────────────────────
+                Button:
+                    text: 'X  Cancel'
+                    background_normal: ''
+                    background_color: (0.72, 0.15, 0.15, 1)
+                    color: 1, 1, 1, 1
+                    bold: True
+                    font_size: sp(15)
+                    on_release: root.on_cancel_click()
+                    canvas.before:
+                        Color:
+                            rgba: (0.72, 0.15, 0.15, 1)
+                        Rectangle:
+                            pos: self.pos
+                            size: self.size
+
             Widget:
                 size_hint_y: None
                 height: dp(15)
 
             # FOOTER
             Label:
-                text: 'Paste a YouTube link and select your preferred quality to download.' if not root.audio_only else ('Audio will be saved as MP3' if not root.audio_only else 'Audio will be saved in m4a/webm format on Android')
+                text: 'Paste a YouTube link and select your preferred quality to download.' if not root.audio_only else 'Audio will be saved as MP3 on Desktop, M4A on Android'
                 font_size: sp(12)
                 color: 0.45, 0.45, 0.45, 1
                 size_hint_y: None
