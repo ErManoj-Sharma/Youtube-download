@@ -35,6 +35,7 @@ Download videos and audio directly to your Android device — even in the backgr
 - [Technical Details](#technical-details)
 - [Permissions](#permissions)
 - [Troubleshooting](#troubleshooting)
+- [Logging](#logging)
 
 ---
 
@@ -334,6 +335,28 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ---
+
+## Logging
+use adb to install and debug program 
+```
+buildozer android debug 
+```
+```py
+# install app
+adb install bin/ytdlapp-1.6-arm64-v8a-debug.apk
+```
+```py
+# see logs
+adb logcat | grep python 
+```
+
+```py
+# single command
+adb logcat -c
+adb install -r -g bin\ytdlapp-1.6-arm64-v8a-debug.apk
+adb shell monkey -p org.ytdl.ytdlapp -c android.intent.category.LAUNCHER 1
+adb logcat | Select-String python
+```
 
 <div align="center">
 

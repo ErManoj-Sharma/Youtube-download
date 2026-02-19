@@ -18,9 +18,11 @@ New features:
   - Pause / Continue button during download (pauses the download thread)
   - Cancel button with confirmation dialog — also deletes .part files on disk
   - Resume continues from where it stopped (yt-dlp --continue flag)
+  - Share intent: YouTube URL pasted from YouTube share, copied to clipboard as fallback
 """
 
 import os
+import re
 import glob
 import threading
 import subprocess
@@ -225,31 +227,26 @@ class YouTubeDownloader(BoxLayout):
     download_progress = NumericProperty(0)
     current_item = StringProperty('')
     total_items = NumericProperty(0)
-    # ── NEW: human-readable downloaded size e.g. '12.4 MB / 98.1 MB' ──────────
     download_size = StringProperty('')
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        # ── Pause / Cancel control primitives ─────────────────────────────────
-        # _pause_event: cleared = paused, set = running
+        # ── ALL instance vars MUST be set before super().__init__() ───────────
+        # Kivy dispatches on_kv_post from inside super().__init__() (via
+        # widget.py → EventDispatcher.dispatch). If on_kv_post runs before
+        # these attributes exist we get AttributeError and the app crashes.
+        self._pending_shared_url = None   # URL buffered until UI is ready
         self._pause_event = threading.Event()
-        self._pause_event.set()          # start in "running" state
-
-        # _cancel_flag: set to True to request cancellation
+        self._pause_event.set()           # start in running state
         self._cancel_flag = False
-
-        # Track the active download thread so we can join it on cancel
         self._download_thread = None
-
-        # Track the current output path for .part file cleanup
         self._current_output_path = None
 
+        super().__init__(**kwargs)        # on_kv_post may fire here
+
+        print(f"[App] __init__ complete. ANDROID={ANDROID}")
+
         if ANDROID:
-            # Request permissions WITH callback.
-            # setup_storage() runs only AFTER user responds to dialog.
-            # Without callback, setup_storage() runs before permission is
-            # granted and the Download path creation fails silently.
+            print("[App] Requesting permissions...")
             request_permissions(
                 [
                     Permission.READ_MEDIA_VIDEO,
@@ -259,41 +256,277 @@ class YouTubeDownloader(BoxLayout):
                 self.on_permissions_result
             )
         else:
-            # Desktop/WSL — no permissions needed, setup immediately
             self.setup_storage()
 
+    # ── KV ready ──────────────────────────────────────────────────────────────
+
+    def on_kv_post(self, base_widget):
+        """
+        Kivy calls this once after the KV file is loaded and self.ids is ready.
+        This is the ONLY place we trigger intent reading on Android —
+        it guarantees the UI exists before we try to paste a URL into it.
+        """
+        print("[App] on_kv_post fired — UI (self.ids) is now ready")
+
+        # Flush any URL that arrived before the UI was built
+        if self._pending_shared_url:
+            print(f"[Intent] Flushing buffered URL from on_kv_post: {self._pending_shared_url}")
+            self._apply_url(self._pending_shared_url)
+            self._pending_shared_url = None
+
+        if ANDROID:
+            # 0.5 s delay lets the Android activity fully settle after launch
+            print("[Intent] Scheduling _read_intent in 0.5 s...")
+            Clock.schedule_once(lambda dt: self._read_intent(), 0.5)
+
+    # ── Intent handling ────────────────────────────────────────────────────────
+
+    def _read_intent(self):
+        """
+        Read the current Android intent.
+
+        If it is a YouTube URL shared via ACTION_SEND / text/plain:
+          STEP 1 — copy URL to clipboard   (always works — user can paste manually)
+          STEP 2 — paste URL into input field
+          STEP 3 — clear the intent        (prevents re-processing on next resume)
+
+        All exceptions are caught and logged — a broken intent can never crash the app.
+        """
+        print("[Intent] _read_intent called")
+
+        if not ANDROID:
+            print("[Intent] Not Android — skipping")
+            return
+
+        try:
+            from jnius import autoclass
+            Intent = autoclass('android.content.Intent')
+            print("[Intent] jnius autoclass OK")
+
+            intent = mActivity.getIntent()
+            if intent is None:
+                print("[Intent] mActivity.getIntent() returned None — nothing to handle")
+                return
+
+            action   = intent.getAction()
+            mimetype = intent.getType()
+            print(f"[Intent] action  = {action}")
+            print(f"[Intent] mime    = {mimetype}")
+
+            if action != Intent.ACTION_SEND:
+                print(f"[Intent] action is not ACTION_SEND — ignoring")
+                return
+
+            if mimetype != 'text/plain':
+                print(f"[Intent] mime is not text/plain — ignoring")
+                return
+
+            shared_text = intent.getStringExtra(Intent.EXTRA_TEXT)
+            print(f"[Intent] EXTRA_TEXT = {repr(shared_text)}")
+
+            if not shared_text:
+                print("[Intent] EXTRA_TEXT is empty — nothing to do")
+                return
+
+            # ── Extract YouTube URL ────────────────────────────────────────────
+            # YouTube share text is typically:
+            #   "Video Title https://youtu.be/xxxx"
+            # or just the URL. The regex finds the first YouTube URL in the string.
+            pattern = r'https?://(?:www\.)?(?:youtube\.com/watch\?[^\s]+|youtu\.be/[^\s]+)'
+            match = re.search(pattern, shared_text)
+
+            if match:
+                url = match.group(0)
+                print(f"[Intent] URL extracted by regex: {url}")
+            else:
+                # Fall back to the whole text stripped
+                url = shared_text.strip()
+                print(f"[Intent] No regex match — using full text as URL: {url}")
+
+            if not self.validate_url(url):
+                print(f"[Intent] validate_url FAILED for: {url}")
+                print("[Intent] URL rejected — not a recognised YouTube URL")
+                return
+
+            print(f"[Intent] URL is valid: {url}")
+
+            # ── STEP 1: Clipboard ─────────────────────────────────────────────
+            # Done first so the user always has the URL even if the UI paste fails.
+            try:
+                from kivy.core.clipboard import Clipboard
+                Clipboard.copy(url)
+                print(f"[Intent] STEP 1 OK — URL copied to clipboard: {url}")
+            except Exception as clip_err:
+                print(f"[Intent] STEP 1 FAILED — clipboard copy error: {clip_err}")
+
+            # ── STEP 2: Paste into input field ────────────────────────────────
+            self._apply_url(url)
+
+            # ── STEP 3: Clear intent ──────────────────────────────────────────
+            # Prevents this same intent being re-read when the user returns
+            # to the app after navigating away (e.g. after visiting Settings).
+            try:
+                mActivity.setIntent(None)
+                print("[Intent] STEP 3 OK — intent cleared (setIntent(None))")
+            except Exception as clear_err:
+                print(f"[Intent] STEP 3 FAILED — could not clear intent: {clear_err}")
+
+        except Exception as e:
+            import traceback
+            print(f"[Intent] _read_intent EXCEPTION: {type(e).__name__}: {e}")
+            print(traceback.format_exc())
+
+    def _apply_url(self, url):
+        """
+        Write url into self.ids.url_input.
+
+        _on_new_intent_activity fires on the Android thread, not the Kivy
+        thread. Writing to widgets from a non-Kivy thread raises:
+          TypeError: Cannot change graphics instruction outside the main Kivy thread
+        Fix: always dispatch the actual widget write via Clock.schedule_once,
+        which guarantees it runs on the Kivy main thread regardless of which
+        thread _apply_url was called from.
+        """
+        print(f"[Intent] _apply_url called with: {url} — scheduling on Kivy thread")
+        Clock.schedule_once(lambda dt: self._write_url_to_field(url), 0)
+
+    def _write_url_to_field(self, url):
+        """Runs on the Kivy main thread — safe to touch widgets."""
+        print(f"[Intent] _write_url_to_field: writing to input field")
+        try:
+            input_widget = self.ids.url_input
+            self.url_text = url
+            input_widget.text = url
+            self.error_message  = ''
+            self.success_message = ''
+            print(f"[Intent] STEP 2 OK — URL written to input field: {url}")
+        except Exception as e:
+            print(f"[Intent] STEP 2 FAILED — ({type(e).__name__}: {e})")
+            print(f"[Intent] Buffering URL — on_kv_post will retry")
+            self._pending_shared_url = url
+
+    def on_new_intent(self, intent):
+        """
+        Called by activity.bind when Android delivers a new share intent to
+        the already-running (backgrounded) app.
+
+        THREADING: this method runs on the Android/Java thread, NOT the Kivy
+        main thread. Therefore we must never touch Kivy widgets directly here.
+
+        Strategy:
+          1. Extract the URL from the intent on the Android thread (safe — no widgets).
+          2. Copy to clipboard on the Android thread (safe).
+          3. Hand off ALL widget writes to the Kivy thread via Clock.schedule_once.
+        """
+        print("[Intent] on_new_intent — app backgrounded, new share received")
+        if not ANDROID:
+            return
+        try:
+            # ── Extract URL on Android thread (no widget access) ───────────────
+            from jnius import autoclass
+            Intent = autoclass('android.content.Intent')
+
+            action   = intent.getAction()
+            mimetype = intent.getType()
+            print(f"[Intent] on_new_intent: action={action}  mime={mimetype}")
+
+            if action != Intent.ACTION_SEND or mimetype != 'text/plain':
+                print("[Intent] on_new_intent: not a text/plain share — ignoring")
+                return
+
+            shared_text = intent.getStringExtra(Intent.EXTRA_TEXT)
+            print(f"[Intent] on_new_intent: EXTRA_TEXT={repr(shared_text)}")
+            if not shared_text:
+                print("[Intent] on_new_intent: EXTRA_TEXT empty — nothing to do")
+                return
+
+            pattern = r'https?://(?:www\.)?(?:youtube\.com/watch\?[^\s]+|youtu\.be/[^\s]+)'
+            match = re.search(pattern, shared_text)
+            url = match.group(0) if match else shared_text.strip()
+            print(f"[Intent] on_new_intent: extracted url={url}")
+
+            if not self.validate_url(url):
+                print("[Intent] on_new_intent: not a valid YouTube URL — ignoring")
+                return
+
+            # ── Clipboard (safe on Android thread) ────────────────────────────
+            try:
+                from kivy.core.clipboard import Clipboard
+                Clipboard.copy(url)
+                print("[Intent] on_new_intent: URL copied to clipboard")
+            except Exception as ce:
+                print(f"[Intent] on_new_intent: clipboard copy failed: {ce}")
+
+            # ── Store intent on activity (safe on Android thread) ─────────────
+            mActivity.setIntent(intent)
+
+            # ── All widget writes → Kivy main thread via Clock.schedule_once ──
+            # _apply_url already uses Clock internally, but we also need to
+            # clear the old URL — do that in the same scheduled call.
+            print("[Intent] on_new_intent: scheduling UI update on Kivy thread")
+            Clock.schedule_once(lambda dt: self._on_new_intent_kivy_thread(url), 0)
+
+        except Exception as e:
+            import traceback
+            print(f"[Intent] on_new_intent ERROR: {type(e).__name__}: {e}")
+            print(traceback.format_exc())
+
+    def _on_new_intent_kivy_thread(self, url):
+        """
+        Runs on the Kivy main thread — safe to read/write widgets here.
+        Clears the old URL then writes the new one.
+        """
+        print(f"[Intent] _on_new_intent_kivy_thread: updating UI with url={url}")
+        try:
+            self.url_text = ''
+            self.ids.url_input.text = ''
+            self.error_message = ''
+            self.success_message = ''
+            print("[Intent] Input field cleared")
+        except Exception as e:
+            print(f"[Intent] Could not clear input field: {e}")
+        # _write_url_to_field is already on Kivy thread — call directly
+        self._write_url_to_field(url)
+
+    # ── Permissions ────────────────────────────────────────────────────────────
+
     def on_permissions_result(self, permissions, grants):
+        print("[Permissions] on_permissions_result called")
         for perm, granted in zip(permissions, grants):
-            print(f"[Permissions] {perm.split('.')[-1]}: {'GRANTED' if granted else 'DENIED'}")
-    
+            status = 'GRANTED' if granted else 'DENIED'
+            print(f"[Permissions]   {perm.split('.')[-1]}: {status}")
+
         if ANDROID:
             try:
                 from jnius import autoclass
                 Environment = autoclass('android.os.Environment')
                 Build = autoclass('android.os.Build')
-    
-                # Android 11 (API 30) specific fix
-                # isExternalStorageManager() only exists on API 30+
+
+                print(f"[Permissions] Android SDK version: {Build.VERSION.SDK_INT}")
+
                 if Build.VERSION.SDK_INT >= 30:
-                    if not Environment.isExternalStorageManager():
-                        # Send user to Settings to grant All Files Access
+                    is_manager = Environment.isExternalStorageManager()
+                    print(f"[Permissions] isExternalStorageManager: {is_manager}")
+                    if not is_manager:
                         Intent = autoclass('android.content.Intent')
                         Settings = autoclass('android.provider.Settings')
                         Uri = autoclass('android.net.Uri')
                         intent = Intent(
                             Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION
                         )
-                        # Deep link directly to YOUR app's settings page
-                        intent.setData(
-                            Uri.parse('package:org.ytdl.ytdlapp')
-                        )
+                        intent.setData(Uri.parse('package:org.ytdl.ytdlapp'))
                         mActivity.startActivity(intent)
-                        print("[Permissions] Android 11: Sent to All Files Access settings")
-                # API 29 and below — requestLegacyExternalStorage handles it
-            except Exception as e:
-                print(f"[Permissions] Storage manager check: {e}")
+                        print("[Permissions] Sent user to All Files Access settings")
+                else:
+                    print("[Permissions] SDK < 30 — no MANAGE_EXTERNAL_STORAGE needed")
 
+            except Exception as e:
+                print(f"[Permissions] Storage manager check error: {e}")
+
+        print("[Permissions] Calling setup_storage()")
         self.setup_storage()
+        # Intent is handled in on_kv_post — do NOT schedule it here.
+        # on_permissions_result may fire before on_kv_post on some devices.
 
     # ── Storage setup ──────────────────────────────────────────────────────────
 
@@ -308,7 +541,6 @@ class YouTubeDownloader(BoxLayout):
 
     def get_windows_username(self):
         """Get Windows username when running in WSL"""
-        # Method 1: cmd.exe
         try:
             result = subprocess.run(
                 ['cmd.exe', '/c', 'echo', '%USERNAME%'],
@@ -320,7 +552,6 @@ class YouTubeDownloader(BoxLayout):
         except Exception:
             pass
 
-        # Method 2: PowerShell
         try:
             result = subprocess.run(
                 ['powershell.exe', '-Command', '$env:USERNAME'],
@@ -332,7 +563,6 @@ class YouTubeDownloader(BoxLayout):
         except Exception:
             pass
 
-        # Method 3: Scan /mnt/c/Users
         try:
             users_dir = '/mnt/c/Users'
             if os.path.exists(users_dir):
@@ -349,26 +579,15 @@ class YouTubeDownloader(BoxLayout):
         return None
 
     def setup_storage(self):
-        """
-        Setup download paths for Android, Desktop, or WSL.
-
-        Android: Uses Environment.getExternalStoragePublicDirectory(DIRECTORY_DOWNLOADS)
-                 — the real system Downloads folder visible in Files app.
-                 Files persist after app uninstall. ✅
-                 Works on API 21+ without needing WRITE_EXTERNAL_STORAGE on API 29+. ✅
-        """
+        """Setup download paths for Android, Desktop, or WSL."""
+        print("[Storage] setup_storage() called")
         try:
             if ANDROID:
                 from jnius import autoclass
                 Environment = autoclass('android.os.Environment')
-
-                # Get the real system Downloads directory via Android API.
-                # This is the correct way on API 29+ — direct path construction
-                # like '/storage/emulated/0/Download/' is blocked by scoped storage.
                 downloads_dir = Environment.getExternalStoragePublicDirectory(
                     Environment.DIRECTORY_DOWNLOADS
                 ).getAbsolutePath()
-
                 base_path = os.path.join(downloads_dir, 'YouTubeDownloader')
                 print(f"[Storage] Android Downloads: {base_path}")
 
@@ -377,7 +596,7 @@ class YouTubeDownloader(BoxLayout):
                 windows_user = self.get_windows_username()
                 if windows_user:
                     base_path = f'/mnt/c/Users/{windows_user}/Downloads/YouTubeDownloader'
-                    print(f"[Storage] Windows Downloads for: {windows_user}")
+                    print(f"[Storage] Windows Downloads for user: {windows_user}")
                 else:
                     base_path = str(Path.home() / "Downloads" / "YouTubeDownloader")
                     print(f"[Storage] WSL fallback: {base_path}")
@@ -388,10 +607,8 @@ class YouTubeDownloader(BoxLayout):
 
             self.audio_path = os.path.join(base_path, 'Audio')
             self.video_path = os.path.join(base_path, 'Video')
-
             os.makedirs(self.audio_path, exist_ok=True)
             os.makedirs(self.video_path, exist_ok=True)
-
             print(f"[Storage] Audio path: {self.audio_path}")
             print(f"[Storage] Video path: {self.video_path}")
 
@@ -402,7 +619,7 @@ class YouTubeDownloader(BoxLayout):
             self.video_path = os.path.join(fallback, 'Video')
             os.makedirs(self.audio_path, exist_ok=True)
             os.makedirs(self.video_path, exist_ok=True)
-            print(f"[Storage] Fallback: {fallback}")
+            print(f"[Storage] Fallback path: {fallback}")
 
     # ── URL helpers ────────────────────────────────────────────────────────────
 
@@ -459,12 +676,10 @@ class YouTubeDownloader(BoxLayout):
     def on_pause_resume_click(self):
         """Toggle between paused and running state."""
         if self.is_paused:
-            # Resume — let the download thread continue
             self.is_paused = False
             self._pause_event.set()
             print("[Control] Download RESUMED")
         else:
-            # Pause — block the download thread at next checkpoint
             self.is_paused = True
             self._pause_event.clear()
             print("[Control] Download PAUSED")
@@ -475,7 +690,6 @@ class YouTubeDownloader(BoxLayout):
         """Show a well-spaced Android-friendly confirmation popup."""
         from kivy.metrics import dp, sp
 
-        # ── Message label ──────────────────────────────────────────────────────
         msg = Label(
             text='Cancel the current download?\nThe incomplete file will be deleted.',
             font_size=sp(15),
@@ -487,11 +701,7 @@ class YouTubeDownloader(BoxLayout):
         )
         msg.bind(size=msg.setter('text_size'))
 
-        # ── Thin red divider between message and buttons ───────────────────────
-        divider = BoxLayout(
-            size_hint_y=None,
-            height=dp(1),
-        )
+        divider = BoxLayout(size_hint_y=None, height=dp(1))
         with divider.canvas.before:
             from kivy.graphics import Color as GColor, Rectangle as GRect
             GColor(0.72, 0.15, 0.15, 1)
@@ -501,7 +711,6 @@ class YouTubeDownloader(BoxLayout):
             instance._rect.size = instance.size
         divider.bind(pos=_update_div, size=_update_div)
 
-        # ── Buttons ────────────────────────────────────────────────────────────
         btn_no = Button(
             text='No',
             background_normal='',
@@ -533,7 +742,6 @@ class YouTubeDownloader(BoxLayout):
         btn_row.add_widget(btn_no)
         btn_row.add_widget(btn_yes)
 
-        # ── Assemble content ───────────────────────────────────────────────────
         content = BoxLayout(
             orientation='vertical',
             padding=[dp(20), dp(18), dp(20), dp(18)],
@@ -543,8 +751,6 @@ class YouTubeDownloader(BoxLayout):
         content.add_widget(divider)
         content.add_widget(btn_row)
 
-        # ── Popup ──────────────────────────────────────────────────────────────
-        # height = top_padding + msg + divider + spacing*2 + btn + bottom_padding
         total_h = dp(18) + dp(72) + dp(1) + dp(14)*2 + dp(54) + dp(18)
 
         popup = Popup(
@@ -554,7 +760,7 @@ class YouTubeDownloader(BoxLayout):
             title_align='center',
             content=content,
             size_hint=(0.86, None),
-            height=total_h + dp(48),   # +48 for Popup's own title bar
+            height=total_h + dp(48),
             background='',
             background_color=(0.12, 0.12, 0.12, 1),
             separator_color=(0.72, 0.15, 0.15, 1),
@@ -564,24 +770,15 @@ class YouTubeDownloader(BoxLayout):
 
         btn_no.bind(on_release=lambda _: popup.dismiss())
         btn_yes.bind(on_release=lambda _: self._confirm_cancel(popup))
-
         popup.open()
 
     def _confirm_cancel(self, popup):
         """User confirmed cancel — stop download and clean up."""
         popup.dismiss()
         print("[Control] Download CANCELLED by user")
-
-        # 1. Signal cancellation to the download thread
         self._cancel_flag = True
-
-        # 2. If paused, unblock the thread so it can exit cleanly
         self._pause_event.set()
-
-        # 3. UI resets immediately (thread will also reset on exit)
         self._reset_download_state()
-
-        # 4. Clean up .part files on a short delay so the thread has time to stop
         Clock.schedule_once(lambda dt: self._cleanup_part_files(), 1.5)
 
     def _cleanup_part_files(self):
@@ -621,8 +818,13 @@ class YouTubeDownloader(BoxLayout):
         self.current_item = ''
         self.error_message = ''
         self.success_message = ''
-        # Re-arm pause event for next download
         self._pause_event.set()
+        try:
+            self.url_text = ''
+            self.ids.url_input.text = ''
+            print("[Control] URL input cleared after cancel")
+        except Exception as e:
+            print(f"[Control] Could not clear URL field: {e}")
 
     # ── Download logic ─────────────────────────────────────────────────────────
 
@@ -635,14 +837,13 @@ class YouTubeDownloader(BoxLayout):
             self.error_message = 'Please enter a valid YouTube URL'
             return
 
-        # Reset control flags for fresh download
         self._cancel_flag = False
-        self._pause_event.set()   # ensure not paused from previous session
+        self._pause_event.set()
 
         self.is_loading = True
         self.is_paused = False
         self.download_progress = 0
-        self.download_size = ''      # ← reset size on new download
+        self.download_size = ''
         self.total_items = 0
 
         self._download_thread = threading.Thread(target=self.download_video, daemon=True)
@@ -655,7 +856,7 @@ class YouTubeDownloader(BoxLayout):
         """
         try:
             output_path = self.audio_path if self.audio_only else self.video_path
-            self._current_output_path = output_path   # for .part cleanup
+            self._current_output_path = output_path
 
             print("\n" + "=" * 60)
             print("DOWNLOAD STARTED")
@@ -666,17 +867,10 @@ class YouTubeDownloader(BoxLayout):
             print(f"Output:   {output_path}")
             print(f"Platform: {'Android' if ANDROID else 'Desktop'}")
 
-            # ── Progress hook ──────────────────────────────────────────────────
             def progress_hook(d):
-                # ── Cancel checkpoint ──────────────────────────────────────────
-                # Raising DownloadCancelled (or any exception) from inside the
-                # hook aborts the current download immediately.
                 if self._cancel_flag:
                     raise yt_dlp.utils.DownloadCancelled("User cancelled")
 
-                # ── Pause checkpoint ──────────────────────────────────────────
-                # _pause_event.wait() blocks here until the event is set again.
-                # We poll in 0.2 s intervals so we can also react to cancel.
                 while not self._pause_event.is_set():
                     if self._cancel_flag:
                         raise yt_dlp.utils.DownloadCancelled("User cancelled while paused")
@@ -692,9 +886,6 @@ class YouTubeDownloader(BoxLayout):
                                 lambda dt: setattr(self, 'download_progress', percent), 0
                             )
 
-                        # ── Size string — e.g. '23.4 MB / 98.1 MB' ──────────
-                        # If total is known show "downloaded / total"
-                        # If total unknown (live streams etc) show just downloaded
                         if total:
                             size_str = f'{format_size(downloaded)} / {format_size(total)}'
                         elif downloaded:
@@ -707,7 +898,6 @@ class YouTubeDownloader(BoxLayout):
                                 lambda dt, s=size_str: setattr(self, 'download_size', s), 0
                             )
 
-                        # Filename
                         filename = d.get('filename', '')
                         if filename:
                             short_name = os.path.basename(filename)[:35]
@@ -723,7 +913,6 @@ class YouTubeDownloader(BoxLayout):
                 except Exception as hook_err:
                     print(f"[Progress hook] Error: {hook_err}")
 
-            # ── Base yt-dlp options ────────────────────────────────────────────
             ydl_opts = {
                 'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
                 'logger': YTDLPLogger(),
@@ -733,11 +922,9 @@ class YouTubeDownloader(BoxLayout):
                 'noprogress': False,
                 'ignoreerrors': False,
                 'nocheckcertificate': True,
-                # Allow resuming interrupted downloads
                 'continuedl': True,
             }
 
-            # ── Playlist handling ──────────────────────────────────────────────
             if self.is_playlist(self.url_text):
                 ydl_opts['noplaylist'] = False
                 print("Playlist detected — downloading all videos")
@@ -748,16 +935,11 @@ class YouTubeDownloader(BoxLayout):
                 ydl_opts['noplaylist'] = True
                 print("Single video download")
 
-            # ── Format + ffmpeg selection ──────────────────────────────────────
             if self.audio_only:
                 if ANDROID:
-                    # Download M4A directly — no ffmpeg needed.
-                    # YouTube stores audio natively as M4A/AAC.
                     ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
                     print("Android: Downloading M4A audio (no post-processing)")
-
                 else:
-                    # Desktop: convert to MP3 via ffmpeg
                     ffmpeg = get_ffmpeg_bin()
                     ydl_opts['format'] = 'bestaudio/best'
                     ydl_opts['postprocessors'] = [{
@@ -768,11 +950,7 @@ class YouTubeDownloader(BoxLayout):
                     ydl_opts['prefer_ffmpeg'] = True
                     ydl_opts['ffmpeg_location'] = ffmpeg
                     print("Desktop: Converting audio to MP3 via ffmpeg")
-
             else:
-                # ── Video quality map ──────────────────────────────────────────
-                # Both Android and Desktop use ffmpeg merge for full quality.
-                # android_fmt kept for reference if merge needs to be disabled.
                 quality_map = {
                     'max':   ('best',               'bestvideo+bestaudio/best'),
                     '1080p': ('best[height<=1080]',  'bestvideo[height<=1080]+bestaudio/best[height<=1080]'),
@@ -784,19 +962,16 @@ class YouTubeDownloader(BoxLayout):
                 )
 
                 if ANDROID:
-                    # Full quality via libffmpegbin.so merge
                     ffmpeg = get_ffmpeg_bin()
                     ydl_opts['format'] = desktop_fmt
                     ydl_opts['ffmpeg_location'] = ffmpeg
                     ydl_opts['merge_output_format'] = 'mp4'
                     print(f"Android: Merging via ffmpeg_bin (format: {desktop_fmt})")
-
                 else:
                     ydl_opts['format'] = desktop_fmt
                     ydl_opts['merge_output_format'] = 'mp4'
                     print(f"Desktop: Merging video+audio (format: {desktop_fmt})")
 
-            # ── Execute download ───────────────────────────────────────────────
             print("-" * 60)
             print("Fetching video information...")
 
@@ -832,19 +1007,14 @@ class YouTubeDownloader(BoxLayout):
 
             Clock.schedule_once(lambda dt: self.on_download_success(), 0)
 
-        # ── Error handling ─────────────────────────────────────────────────────
-        # ── Cancelled ─────────────────────────────────────────────────────────
         except yt_dlp.utils.DownloadCancelled:
             print("[Control] Download thread exited after cancel")
-            # UI was already reset in _confirm_cancel; nothing more to do here.
 
-        # ── ffmpeg not installed ───────────────────────────────────────────────
         except RuntimeError as e:
             msg = str(e)
             print(f"[FFmpeg] {msg}")
             Clock.schedule_once(lambda dt: self.on_download_error(msg), 0)
 
-        # ── yt-dlp errors ─────────────────────────────────────────────────────
         except yt_dlp.utils.DownloadError as e:
             error_msg = str(e)
             print("\n" + "=" * 60)
@@ -865,9 +1035,7 @@ class YouTubeDownloader(BoxLayout):
             else:
                 user_msg = error_msg[:80] if len(error_msg) > 80 else error_msg
 
-            Clock.schedule_once(
-                lambda dt: self.on_download_error(user_msg), 0
-            )
+            Clock.schedule_once(lambda dt: self.on_download_error(user_msg), 0)
 
         except Exception as e:
             import traceback
@@ -883,9 +1051,7 @@ class YouTubeDownloader(BoxLayout):
                 return
 
             user_msg = f'{type(e).__name__}: {str(e)[:60]}'
-            Clock.schedule_once(
-                lambda dt: self.on_download_error(user_msg), 0
-            )
+            Clock.schedule_once(lambda dt: self.on_download_error(user_msg), 0)
 
     # ── Download result handlers ───────────────────────────────────────────────
 
@@ -916,7 +1082,6 @@ class YouTubeDownloader(BoxLayout):
             else:
                 self.success_message = f'✓ {file_type} downloaded to {folder} folder'
 
-        # Reset UI state
         self.url_text = ''
         self.ids.url_input.text = ''
         self.download_progress = 0
@@ -947,7 +1112,34 @@ class YouTubeDownloaderApp(App):
     def build(self):
         self.title = 'YouTube Downloader'
         Builder.load_file('design.kv')
-        return YouTubeDownloader()
+        self.root_widget = YouTubeDownloader()
+
+        # ── Wire on_new_intent to the Android activity ────────────────────────
+        # p4a does NOT call on_new_intent on the Kivy App class automatically.
+        # We must bind a Python callback to the activity ourselves.
+        # Without this, sharing a URL to an already-running app does nothing.
+        if ANDROID:
+            try:
+                from android import activity  # p4a helper module
+                activity.bind(on_new_intent=self._on_new_intent_activity)
+                print("[App] on_new_intent bound to Android activity via activity.bind()")
+            except Exception as e:
+                print(f"[App] Could not bind on_new_intent via activity.bind(): {e}")
+                print("[App] Falling back — on_new_intent may not work when app is backgrounded")
+
+        return self.root_widget
+
+    def _on_new_intent_activity(self, intent):
+        """
+        Called by p4a activity binding when Android delivers a new intent
+        to the already-running app (e.g. user shares a URL from YouTube
+        while our app is in the background).
+        """
+        print("[App] _on_new_intent_activity called — new intent received from Android")
+        if hasattr(self, 'root_widget'):
+            self.root_widget.on_new_intent(intent)
+        else:
+            print("[App] _on_new_intent_activity: root_widget not ready — intent lost")
 
 
 if __name__ == '__main__':
