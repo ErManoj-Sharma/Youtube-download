@@ -13,7 +13,8 @@ package.domain = org.ytdl
 source.dir = .
 
 # (list) Source files to include (let empty to include all the files)
-source.include_exts = py,kv,png,jpg,ttf
+source.include_exts = py,kv,png,jpg,xml
+
 
 
 # (list) List of inclusions using pattern matching
@@ -30,7 +31,7 @@ source.include_exts = py,kv,png,jpg,ttf
 #source.exclude_patterns = license,images/*/*.jpg
 
 # (str) Application versioning (method 1)
-version = 1.5
+version = 1.6
 
 # (str) Application versioning (method 2)
 # version.regex = __version__ = ['"](.*)['"]
@@ -103,7 +104,7 @@ fullscreen = 0
 
 # (list) Permissions
 # (See https://python-for-android.readthedocs.io/en/latest/buildoptions/#build-options-1 for all the supported syntaxes and properties)
-android.permissions = INTERNET,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO
+android.permissions = INTERNET,READ_MEDIA_VIDEO,READ_MEDIA_AUDIO,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
 
 
 # (list) features (adds uses-feature -tags to manifest)
@@ -246,8 +247,8 @@ android.enable_androidx = True
 # (str) Filename of OUYA Console icon. It must be a 732x412 png image.
 #android.ouya.icon.filename = %(source.dir)s/data/ouya_icon.png
 
-# (str) XML file to include as an intent filters in <activity> tag
-#android.manifest.intent_filters =
+# (str) XML file to include as an intent filters in <activity> tagandroid.activity_class_name = org.ytdl.ytdlapp.MyPythonActivity
+android.manifest.intent_filters = intent_filters.xml
 
 # (list) Copy these files to src/main/res/xml/ (used for example with intent-filters)
 #android.res_xml = PATH_TO_FILE,
