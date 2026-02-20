@@ -45,6 +45,7 @@ try:
     from android import mActivity
     from android.permissions import request_permissions, Permission, check_permission
     from android.storage import primary_external_storage_path
+    from jnius import autoclass
     ANDROID = True
 except ImportError:
     ANDROID = False
@@ -212,6 +213,236 @@ class YTDLPLogger:
         pass
 
 
+# ── Android Notification Helper ────────────────────────────────────────────────
+class AndroidNotificationHelper:
+    """Helper class for Android notifications using AndroidX"""
+
+    def __init__(self):
+        if not ANDROID:
+            return
+        try:
+            self.Context = autoclass('android.content.Context')
+            self.Build = autoclass('android.os.Build')
+            self.BuildVersion = autoclass('android.os.Build$VERSION')
+            self.BuildVersionCodes = autoclass('android.os.Build$VERSION_CODES')
+            self.NotificationManager = autoclass('android.app.NotificationManager')
+            self.NotificationChannel = autoclass('android.app.NotificationChannel')
+            self.NotificationCompat = autoclass('androidx.core.app.NotificationCompat$Builder')
+            self.Notification = autoclass('android.app.Notification')
+            self.Intent = autoclass('android.content.Intent')
+            self.PendingIntent = autoclass('android.app.PendingIntent')
+            self.RDrawable = autoclass('android.R$drawable')
+            self._channel_created = False
+            print("[Notification] Helper initialized with AndroidX")
+        except Exception as e:
+            print(f"[Notification] Failed to initialize: {e}")
+            self.NotificationCompat = None
+
+    def create_notification_channel(self):
+        """Create notification channel for Android 8+"""
+        if not self.NotificationCompat:
+            return
+        try:
+            if self.BuildVersion.SDK_INT >= self.BuildVersionCodes.O:
+                app_context = mActivity.getApplicationContext()
+                channel = self.NotificationChannel(
+                    "download_channel",
+                    "Downloads",
+                    self.NotificationManager.IMPORTANCE_LOW
+                )
+                channel.setDescription("YouTube download progress")
+                nm = app_context.getSystemService(self.Context.NOTIFICATION_SERVICE)
+                nm.createNotificationChannel(channel)
+                self._channel_created = True
+                print("[Notification] Channel created")
+        except Exception as e:
+            print(f"[Notification] Channel creation failed: {e}")
+
+    def start_foreground_service(self, title, message):
+        """Start foreground notification"""
+        if not self.NotificationCompat:
+            return
+        try:
+            app_context = mActivity.getApplicationContext()
+
+            intent = self.Intent(app_context, mActivity.getClass())
+            intent.setAction("android.intent.action.MAIN")
+            intent.addCategory("android.intent.category.LAUNCHER")
+
+            pending_intent = self.PendingIntent.getActivity(
+                app_context, 0, intent,
+                self.PendingIntent.FLAG_UPDATE_CURRENT | self.PendingIntent.FLAG_IMMUTABLE
+            )
+
+            builder = self.NotificationCompat(app_context, "download_channel")
+            builder.setContentTitle(title)
+            builder.setContentText(message)
+            builder.setSmallIcon(self.RDrawable.stat_sys_download)
+            builder.setContentIntent(pending_intent)
+            builder.setOngoing(True)
+            builder.setProgress(100, 0, True)
+
+            notification = builder.build()
+            nm = app_context.getSystemService(self.Context.NOTIFICATION_SERVICE)
+            nm.notify(1, notification)
+            print(f"[Notification] Started: {title}")
+        except Exception as e:
+            print(f"[Notification] Start failed: {e}")
+
+    def update_notification(self, filename, downloaded, total, speed, progress, is_paused=False):
+        """Update notification with progress - optimized for visibility"""
+        if not self.NotificationCompat:
+            return
+        try:
+            app_context = mActivity.getApplicationContext()
+
+            intent = self.Intent(app_context, mActivity.getClass())
+            intent.setAction("android.intent.action.MAIN")
+            intent.addCategory("android.intent.category.LAUNCHER")
+
+            pending_intent = self.PendingIntent.getActivity(
+                app_context, 0, intent,
+                self.PendingIntent.FLAG_UPDATE_CURRENT | self.PendingIntent.FLAG_IMMUTABLE
+            )
+
+            is_merging = "(Merging..." in str(filename)
+            short_name = os.path.basename(filename).replace(" (Merging...", "").replace(" • Paused", "") if filename else 'Downloading...'
+            if len(short_name) > 30:
+                short_name = short_name[:27] + '...'
+
+            size_str = f'{format_size(downloaded)}' if downloaded > 0 else '0 KB'
+            if total > 0:
+                size_str += f' / {format_size(total)}'
+            
+            speed_str = f'{format_size(speed)}/s' if speed else ''
+            percent_str = f'{int(progress)}%' if progress >= 0 else ''
+
+            if is_merging:
+                title = short_name
+                content = "Combining video and audio..."
+            elif is_paused:
+                title = short_name
+                content = f"Paused • {percent_str} • {size_str}" if percent_str else f"Paused • {size_str}"
+            else:
+                title = short_name
+                if speed_str and percent_str:
+                    content = f"{percent_str} • {size_str} • {speed_str}"
+                elif percent_str:
+                    content = f"{percent_str} • {size_str}"
+                elif speed_str:
+                    content = f"{size_str} • {speed_str}"
+                else:
+                    content = size_str if size_str else "Starting..."
+
+            builder = self.NotificationCompat(app_context, "download_channel")
+            builder.setContentTitle(title)
+            builder.setContentText(content)
+            builder.setSmallIcon(self.RDrawable.stat_sys_download)
+            builder.setContentIntent(pending_intent)
+            builder.setOngoing(True)
+            builder.setOnlyAlertOnce(True)
+
+            if is_merging:
+                builder.setProgress(0, 0, True)
+            elif is_paused:
+                builder.setProgress(0, 0, False)
+            elif progress >= 0 and total > 0:
+                builder.setProgress(100, int(progress), False)
+            else:
+                builder.setProgress(0, 0, True)
+
+            try:
+                if not is_merging and not self._app_in_foreground:
+                    pause_intent = self.Intent(app_context, mActivity.getClass())
+                    pause_intent.setAction("org.ytdl.ytdlapp.PAUSE")
+                    pause_pending = self.PendingIntent.getActivity(
+                        app_context, 1, pause_intent,
+                        self.PendingIntent.FLAG_UPDATE_CURRENT | self.PendingIntent.FLAG_IMMUTABLE
+                    )
+                    
+                    cancel_intent = self.Intent(app_context, mActivity.getClass())
+                    cancel_intent.setAction("org.ytdl.ytdlapp.CANCEL")
+                    cancel_pending = self.PendingIntent.getActivity(
+                        app_context, 2, cancel_intent,
+                        self.PendingIntent.FLAG_UPDATE_CURRENT | self.PendingIntent.FLAG_IMMUTABLE
+                    )
+                    
+                    if is_paused:
+                        builder.addAction(self.RDrawable.ic_media_play, "Resume", pause_pending)
+                    else:
+                        builder.addAction(self.RDrawable.ic_media_pause, "Pause", pause_pending)
+                    builder.addAction(self.RDrawable.ic_menu_close_clear_cancel, "Cancel", cancel_pending)
+            except Exception as e:
+                print(f"[Notification] Action buttons failed: {e}")
+
+            notification = builder.build()
+            nm = app_context.getSystemService(self.Context.NOTIFICATION_SERVICE)
+            nm.notify(1, notification)
+            print(f"[Notification] Updated: title='{short_name}', progress={progress}, is_paused={is_paused}")
+        except Exception as e:
+            print(f"[Notification] Update failed: {e}")
+
+    def cancel_notification(self):
+        """Cancel the current notification"""
+        try:
+            app_context = mActivity.getApplicationContext()
+            nm = app_context.getSystemService(self.Context.NOTIFICATION_SERVICE)
+            nm.cancel(1)
+            print("[Notification] Cancelled")
+        except Exception as e:
+            print(f"[Notification] Cancel failed: {e}")
+
+    def show_completion_notification(self, title, message):
+        """Show completion notification with auto-dismiss"""
+        if not self.NotificationCompat:
+            return
+        try:
+            app_context = mActivity.getApplicationContext()
+
+            intent = self.Intent(app_context, mActivity.getClass())
+            intent.setAction("android.intent.action.MAIN")
+            intent.addCategory("android.intent.category.LAUNCHER")
+
+            pending_intent = self.PendingIntent.getActivity(
+                app_context, 0, intent,
+                self.PendingIntent.FLAG_UPDATE_CURRENT | self.PendingIntent.FLAG_IMMUTABLE
+            )
+
+            builder = self.NotificationCompat(app_context, "download_channel")
+            builder.setContentTitle(title)
+            builder.setContentText(message)
+            builder.setSmallIcon(self.RDrawable.stat_sys_download_done)
+            builder.setContentIntent(pending_intent)
+            builder.setAutoCancel(True)
+
+            notification = builder.build()
+            nm = app_context.getSystemService(self.Context.NOTIFICATION_SERVICE)
+            nm.notify(1, notification)
+            print(f"[Notification] Completion shown")
+            
+            def auto_dismiss():
+                try:
+                    nm.cancel(1)
+                except:
+                    pass
+            Clock.schedule_once(lambda dt: auto_dismiss(), 5)
+            
+        except Exception as e:
+            print(f"[Notification] Completion failed: {e}")
+
+    def stop_foreground_service(self):
+        """Stop notification"""
+        if not self.NotificationCompat:
+            return
+        try:
+            app_context = mActivity.getApplicationContext()
+            nm = app_context.getSystemService(self.Context.NOTIFICATION_SERVICE)
+            nm.cancel(1)
+            print("[Notification] Cancelled")
+        except Exception as e:
+            print(f"[Notification] Stop failed: {e}")
+
+
 # ── Main widget ────────────────────────────────────────────────────────────────
 class YouTubeDownloader(BoxLayout):
     """Main widget for YouTube Downloader"""
@@ -240,6 +471,10 @@ class YouTubeDownloader(BoxLayout):
         self._cancel_flag = False
         self._download_thread = None
         self._current_output_path = None
+        self._notification_helper = None
+        self._postprocessing = False
+        self._last_total = 0
+        self._app_in_foreground = True
 
         super().__init__(**kwargs)        # on_kv_post may fire here
 
@@ -414,7 +649,7 @@ class YouTubeDownloader(BoxLayout):
         main thread. Therefore we must never touch Kivy widgets directly here.
 
         Strategy:
-          1. Extract the URL from the intent on the Android thread (safe — no widgets).
+          1. Extract the URL on the Android thread (safe — no widgets).
           2. Copy to clipboard on the Android thread (safe).
           3. Hand off ALL widget writes to the Kivy thread via Clock.schedule_once.
         """
@@ -422,13 +657,22 @@ class YouTubeDownloader(BoxLayout):
         if not ANDROID:
             return
         try:
-            # ── Extract URL on Android thread (no widget access) ───────────────
             from jnius import autoclass
             Intent = autoclass('android.content.Intent')
 
             action   = intent.getAction()
             mimetype = intent.getType()
             print(f"[Intent] on_new_intent: action={action}  mime={mimetype}")
+
+            if action == "org.ytdl.ytdlapp.PAUSE":
+                print("[Intent] Pause action received")
+                Clock.schedule_once(lambda dt: self._handle_pause_action(), 0)
+                return
+            
+            if action == "org.ytdl.ytdlapp.CANCEL":
+                print("[Intent] Cancel action received")
+                Clock.schedule_once(lambda dt: self._handle_cancel_action(), 0)
+                return
 
             if action != Intent.ACTION_SEND or mimetype != 'text/plain':
                 print("[Intent] on_new_intent: not a text/plain share — ignoring")
@@ -501,10 +745,11 @@ class YouTubeDownloader(BoxLayout):
                 from jnius import autoclass
                 Environment = autoclass('android.os.Environment')
                 Build = autoclass('android.os.Build')
+                BuildVersion = autoclass('android.os.Build$VERSION')
 
-                print(f"[Permissions] Android SDK version: {Build.VERSION.SDK_INT}")
+                print(f"[Permissions] Android SDK version: {BuildVersion.SDK_INT}")
 
-                if Build.VERSION.SDK_INT >= 30:
+                if BuildVersion.SDK_INT >= 30:
                     is_manager = Environment.isExternalStorageManager()
                     print(f"[Permissions] isExternalStorageManager: {is_manager}")
                     if not is_manager:
@@ -621,6 +866,10 @@ class YouTubeDownloader(BoxLayout):
             os.makedirs(self.video_path, exist_ok=True)
             print(f"[Storage] Fallback path: {fallback}")
 
+        if ANDROID and self._notification_helper is None:
+            self._notification_helper = AndroidNotificationHelper()
+            self._notification_helper.create_notification_channel()
+
     # ── URL helpers ────────────────────────────────────────────────────────────
 
     def validate_url(self, url):
@@ -679,10 +928,22 @@ class YouTubeDownloader(BoxLayout):
             self.is_paused = False
             self._pause_event.set()
             print("[Control] Download RESUMED")
+            if self._notification_helper:
+                filename = self.current_item if self.current_item else 'Downloading...'
+                downloaded = int((self.download_progress / 100) * self._last_total) if self._last_total and self.download_progress > 0 else 0
+                self._notification_helper.update_notification(
+                    filename, downloaded, self._last_total or 0, 0, self.download_progress, is_paused=False
+                )
         else:
             self.is_paused = True
             self._pause_event.clear()
             print("[Control] Download PAUSED")
+            if self._notification_helper:
+                filename = self.current_item if self.current_item else 'Downloading...'
+                downloaded = int((self.download_progress / 100) * self._last_total) if self._last_total and self.download_progress > 0 else 0
+                self._notification_helper.update_notification(
+                    f"{filename}", downloaded, self._last_total or 0, 0, self.download_progress, is_paused=True
+                )
 
     # ── Cancel with confirmation ───────────────────────────────────────────────
 
@@ -779,6 +1040,27 @@ class YouTubeDownloader(BoxLayout):
         self._cancel_flag = True
         self._pause_event.set()
         self._reset_download_state()
+        if self._notification_helper:
+            self._notification_helper.stop_foreground_service()
+        Clock.schedule_once(lambda dt: self._cleanup_part_files(), 1.5)
+
+    def _handle_pause_action(self):
+        """Handle pause/resume from notification action button"""
+        if not self.is_loading:
+            return
+        print("[Control] Pause/Resume triggered from notification")
+        self.on_pause_click()
+
+    def _handle_cancel_action(self):
+        """Handle cancel from notification action button"""
+        if not self.is_loading:
+            return
+        print("[Control] Cancel triggered from notification")
+        self._cancel_flag = True
+        self._pause_event.set()
+        self._reset_download_state()
+        if self._notification_helper:
+            self._notification_helper.stop_foreground_service()
         Clock.schedule_once(lambda dt: self._cleanup_part_files(), 1.5)
 
     def _cleanup_part_files(self):
@@ -819,6 +1101,7 @@ class YouTubeDownloader(BoxLayout):
         self.error_message = ''
         self.success_message = ''
         self._pause_event.set()
+        self._postprocessing = False
         try:
             self.url_text = ''
             self.ids.url_input.text = ''
@@ -839,6 +1122,7 @@ class YouTubeDownloader(BoxLayout):
 
         self._cancel_flag = False
         self._pause_event.set()
+        self._last_total = 0
 
         self.is_loading = True
         self.is_paused = False
@@ -867,12 +1151,23 @@ class YouTubeDownloader(BoxLayout):
             print(f"Output:   {output_path}")
             print(f"Platform: {'Android' if ANDROID else 'Desktop'}")
 
+            if self._notification_helper:
+                mode = "Audio" if self.audio_only else "Video"
+                self._notification_helper.start_foreground_service(
+                    "YouTube Downloader",
+                    f"Starting {mode} download..."
+                )
+
             def progress_hook(d):
                 if self._cancel_flag:
+                    if self._notification_helper:
+                        self._notification_helper.cancel_notification()
                     raise yt_dlp.utils.DownloadCancelled("User cancelled")
 
                 while not self._pause_event.is_set():
                     if self._cancel_flag:
+                        if self._notification_helper:
+                            self._notification_helper.cancel_notification()
                         raise yt_dlp.utils.DownloadCancelled("User cancelled while paused")
                     self._pause_event.wait(timeout=0.2)
 
@@ -880,10 +1175,22 @@ class YouTubeDownloader(BoxLayout):
                     if d['status'] == 'downloading':
                         downloaded = d.get('downloaded_bytes', 0)
                         total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                        speed = d.get('speed', 0)
+                        filename = d.get('filename', '')
+                        
                         if total:
+                            self._last_total = total
                             percent = (downloaded / total) * 100
                             Clock.schedule_once(
                                 lambda dt: setattr(self, 'download_progress', percent), 0
+                            )
+                            if self._notification_helper:
+                                self._notification_helper.update_notification(
+                                    filename, downloaded, total, speed, percent
+                                )
+                        elif self._notification_helper and downloaded > 0:
+                            self._notification_helper.update_notification(
+                                filename, downloaded, 0, speed, -1
                             )
 
                         if total:
@@ -908,6 +1215,31 @@ class YouTubeDownloader(BoxLayout):
                         Clock.schedule_once(
                             lambda dt: setattr(self, 'download_progress', 100), 0
                         )
+                        print(f"[Progress] Download finished: {d.get('filename', 'unknown')}")
+                        if self._notification_helper:
+                            filename = d.get('filename', '')
+                            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                            print(f"[Notification] Finished - filename: {filename}, total: {total}, postprocessing: {self._postprocessing}")
+                            if self._postprocessing:
+                                short_name = os.path.basename(filename) if filename else 'Video'
+                                if len(short_name) > 25:
+                                    short_name = short_name[:22] + '...'
+                                self._notification_helper.update_notification(
+                                    f"{short_name} (Merging...)", 
+                                    total if total else 0, total if total else 0, 0, 100
+                                )
+                            else:
+                                self._notification_helper.update_notification(
+                                    f"{os.path.basename(filename) if filename else 'Downloaded'} ✓",
+                                    total if total else 0, total if total else 0, 0, 100
+                                )
+                    elif d['status'] == 'processing':
+                        if self._notification_helper:
+                            filename = d.get('filename', '')
+                            self._notification_helper.update_notification(
+                                filename if filename else "Processing...", 
+                                0, 0, 0, -1
+                            )
                 except yt_dlp.utils.DownloadCancelled:
                     raise
                 except Exception as hook_err:
@@ -996,7 +1328,18 @@ class YouTubeDownloader(BoxLayout):
 
                 print("-" * 60)
                 print("Starting download...")
+                
+                if not self.audio_only and ANDROID:
+                    self._postprocessing = True
+                    if self._notification_helper:
+                        filename = info.get('title', 'Video') if info else 'Video'
+                        self._notification_helper.update_notification(
+                            f"{filename} (Merging...)", 0, 0, 0, 100
+                        )
+                
                 ydl.download([self.url_text])
+                
+                self._postprocessing = False
 
             if self._cancel_flag:
                 return
@@ -1005,14 +1348,28 @@ class YouTubeDownloader(BoxLayout):
             print("Download completed successfully!")
             print("=" * 60 + "\n")
 
+            print(f"[Notification] Download complete - showing completion notification (audio_only={self.audio_only})")
+            if self._notification_helper:
+                self._notification_helper.stop_foreground_service()
+                folder = 'Audio' if self.audio_only else 'Video'
+                count = self.total_items
+                item_text = f"{count} items" if count > 1 else "Download complete"
+                self._notification_helper.show_completion_notification(
+                    "Download Complete",
+                    f"{item_text} saved to {folder} folder"
+                )
+            
+            self._postprocessing = False
             Clock.schedule_once(lambda dt: self.on_download_success(), 0)
 
         except yt_dlp.utils.DownloadCancelled:
             print("[Control] Download thread exited after cancel")
+            self._postprocessing = False
 
         except RuntimeError as e:
             msg = str(e)
             print(f"[FFmpeg] {msg}")
+            self._postprocessing = False
             Clock.schedule_once(lambda dt: self.on_download_error(msg), 0)
 
         except yt_dlp.utils.DownloadError as e:
@@ -1035,6 +1392,7 @@ class YouTubeDownloader(BoxLayout):
             else:
                 user_msg = error_msg[:80] if len(error_msg) > 80 else error_msg
 
+            self._postprocessing = False
             Clock.schedule_once(lambda dt: self.on_download_error(user_msg), 0)
 
         except Exception as e:
@@ -1050,6 +1408,7 @@ class YouTubeDownloader(BoxLayout):
             if self._cancel_flag:
                 return
 
+            self._postprocessing = False
             user_msg = f'{type(e).__name__}: {str(e)[:60]}'
             Clock.schedule_once(lambda dt: self.on_download_error(user_msg), 0)
 
@@ -1099,6 +1458,8 @@ class YouTubeDownloader(BoxLayout):
         self.download_progress = 0
         self.download_size = ''
         print(f"[Error displayed to user] {error}")
+        if self._notification_helper:
+            self._notification_helper.stop_foreground_service()
 
     def clear_success(self):
         """Clear success message"""
@@ -1122,12 +1483,24 @@ class YouTubeDownloaderApp(App):
             try:
                 from android import activity  # p4a helper module
                 activity.bind(on_new_intent=self._on_new_intent_activity)
+                activity.bind(on_start=self._on_app_start)
+                activity.bind(on_stop=self._on_app_stop)
                 print("[App] on_new_intent bound to Android activity via activity.bind()")
             except Exception as e:
                 print(f"[App] Could not bind on_new_intent via activity.bind(): {e}")
                 print("[App] Falling back — on_new_intent may not work when app is backgrounded")
 
         return self.root_widget
+
+    def _on_app_start(self, *args):
+        if self.root_widget:
+            self.root_widget._app_in_foreground = True
+            print("[App] App in foreground")
+
+    def _on_app_stop(self, *args):
+        if self.root_widget:
+            self.root_widget._app_in_foreground = False
+            print("[App] App in background")
 
     def _on_new_intent_activity(self, intent):
         """
