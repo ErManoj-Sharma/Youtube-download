@@ -487,6 +487,7 @@ class YouTubeDownloader(BoxLayout):
                     Permission.READ_MEDIA_VIDEO,
                     Permission.READ_MEDIA_AUDIO,
                     Permission.WRITE_EXTERNAL_STORAGE,
+                    Permission.POST_NOTIFICATIONS,
                 ],
                 self.on_permissions_result
             )
