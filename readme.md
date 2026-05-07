@@ -50,7 +50,7 @@ Download videos and audio directly to your Android device — even in the backgr
 
 | Downloading (Paused) | Cancel Confirmation | Share Intend by Youtube 
 |:--------------------:|:-------------------:|:-------------------:|
-| <img src="images/paused.jpg" alt="Download Paused" width="220"/> | <img src="images/cancel.jpg" alt="Cancel Dialog" width="220"/> |<a href="https://www.youtube.com/shorts/I6a-M6uJsPQ"><img src="images/share_thumb.jpg" width="220"/></a>
+| <img src="images/paused.jpg" alt="Download Paused" width="220"/> | <img src="images/cancel.jpg" alt="Cancel Dialog" width="220"/> |<a href="https://www.youtube.com/shorts/I6a-M6uJsPQ"><img src="images/share_thumb.jpeg" width="220"/></a>
 | Pause mid-download and resume anytime | Confirm before cancelling — incomplete files are auto-deleted | Share Video From Youtube to app |
 
 </div>
