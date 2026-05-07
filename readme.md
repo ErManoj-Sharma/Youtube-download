@@ -48,10 +48,10 @@ Download videos and audio directly to your Android device — even in the backgr
 | <img src="images/splash.jpg" alt="Home Screen" width="220"/>| <img src="images/home.jpg" alt="Home Screen" width="220"/> | <img src="images/audio_mode.jpg" alt="Audio Only Mode" width="220"/> |
 |Welcom Page| Paste a YouTube link and choose quality | Toggle Audio Only for MP3/M4A downloads |
 
-| Downloading (Paused) | Cancel Confirmation |
-|:--------------------:|:-------------------:|
-| <img src="images/paused.jpg" alt="Download Paused" width="220"/> | <img src="images/cancel.jpg" alt="Cancel Dialog" width="220"/> |
-| Pause mid-download and resume anytime | Confirm before cancelling — incomplete files are auto-deleted |
+| Downloading (Paused) | Cancel Confirmation | Share Intend by Youtube 
+|:--------------------:|:-------------------:|:-------------------:|
+| <img src="images/paused.jpg" alt="Download Paused" width="220"/> | <img src="images/cancel.jpg" alt="Cancel Dialog" width="220"/> |<video src="https://raw.githubusercontent.com/ErManoj-Sharma/Youtube-download/main/images/share.mp4" controls width="220"></video>
+| Pause mid-download and resume anytime | Confirm before cancelling — incomplete files are auto-deleted | Share Video From Youtube to app |
 
 </div>
 
