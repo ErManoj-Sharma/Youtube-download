@@ -18,6 +18,8 @@ Download videos and audio directly to your Android device — even in the backgr
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://python.org)
 [![Kivy](https://img.shields.io/badge/Kivy-2.3.1-brightgreen?logo=kivy)](https://kivy.org)
 [![yt-dlp](https://img.shields.io/badge/yt--dlp-latest-red)](https://github.com/yt-dlp/yt-dlp)
+![Downloads](
+https://img.shields.io/github/downloads/ErManoj-Sharma/Youtube-download/V1.7-stable/total)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 </div>
