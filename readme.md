@@ -12,8 +12,8 @@
 # YouTube Downloader
 
 **A powerful, open-source YouTube downloader built with Kivy and yt-dlp**  
-Download videos and audio directly to your Android device — even in the background.
-
+Download videos and audio directly to your Android device & Computer — even in the background.
+### If This App Help You. Please give it a Star ⭐
 [![Platform](https://img.shields.io/badge/Platform-Android-green?logo=android)](https://www.android.com)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://python.org)
 [![Kivy](https://img.shields.io/badge/Kivy-2.3.1-brightgreen?logo=kivy)](https://kivy.org)
@@ -23,7 +23,7 @@ https://img.shields.io/github/downloads/ErManoj-Sharma/Youtube-download/V1.7-sta
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 </div>
-
+ 
 ---
 
 ## Table of Contents
