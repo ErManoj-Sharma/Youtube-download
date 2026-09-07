@@ -31,7 +31,7 @@ source.include_exts = py,kv,png,jpg,xml
 #source.exclude_patterns = license,images/*/*.jpg
 
 # (str) Application versioning (method 1)
-version = 1.7
+version = 1.8
 
 # (str) Application versioning (method 2)
 # version.regex = __version__ = ['"](.*)['"]
@@ -39,7 +39,7 @@ version = 1.7
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy,ffmpeg,yt-dlp,requests,urllib3,certifi,charset-normalizer,idna,filetype,android
+requirements = python3,kivy,ffmpeg,yt-dlp==2026.8.19,requests,urllib3,certifi,charset-normalizer,idna,filetype,android
 
 
 # (str) Custom source folders for requirements
@@ -336,7 +336,11 @@ p4a.local_recipes = ./recipes
 #p4a.branch = master
 
 # (str) python-for-android specific commit to use, defaults to HEAD, must be within p4a.branch
-#p4a.commit = HEAD
+# NOTE: pinned to a8f2ca1c (2025-07-24) — the p4a commit that matches this
+#       project: target Python 3.11.5, NDK r25b, Kivy 2.3.1, and the local
+#       ffmpeg recipe's toolchain API. Do NOT bump to newer p4a (Python 3.14
+#       target / NDK r28c) unless all project recipes are updated too.
+p4a.commit = a8f2ca1c
 
 # (str) python-for-android git clone directory (if empty, it will be automatically cloned from github)
 #p4a.source_dir =

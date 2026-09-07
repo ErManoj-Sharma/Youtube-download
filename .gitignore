@@ -1,4 +1,6 @@
 /venv
-/buildozer_venv
-
+/buildozer-venv
 /.buildozer
+__pycache__/
+*.pyc
+/bin/

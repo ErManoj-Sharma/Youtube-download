@@ -1256,6 +1256,16 @@ class YouTubeDownloader(BoxLayout):
                 'ignoreerrors': False,
                 'nocheckcertificate': True,
                 'continuedl': True,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+                },
+                'referer': 'https://www.youtube.com/',
+                'extractor_args': {
+                    'youtube:player_client': ['android', 'web_embedded'],
+                },
+                'retries': 10,
+                'fragment_retries': 10,
+                'retry_sleep_functions': {'http': lambda n: 10 * (2 ** n)},
             }
 
             if self.is_playlist(self.url_text):

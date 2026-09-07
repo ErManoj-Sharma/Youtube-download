@@ -45,10 +45,10 @@ https://img.shields.io/github/downloads/ErManoj-Sharma/Youtube-download/V1.7-sta
 
 <div align="center">
 
-|Splash Screen| Home Screen | Audio Mode |
-|:-----------:|:-----------:|:----------:|
-| <img src="images/splash.jpg" alt="Home Screen" width="220"/>| <img src="images/home.jpg" alt="Home Screen" width="220"/> | <img src="images/audio_mode.jpg" alt="Audio Only Mode" width="220"/> |
-|Welcom Page| Paste a YouTube link and choose quality | Toggle Audio Only for MP3/M4A downloads |
+|                        Splash Screen                         |                        Home Screen                         |                              Audio Mode                              |
+|:------------------------------------------------------------:|:----------------------------------------------------------:|:--------------------------------------------------------------------:|
+| <img src="images/splash.jpg" alt="Home Screen" width="220"/> | <img src="images/home.jpg" alt="Home Screen" width="220"/> | <img src="images/audio_mode.jpg" alt="Audio Only Mode" width="220"/> |
+|                         Welcom Page                          |          Paste a YouTube link and choose quality           |               Toggle Audio Only for MP3/M4A downloads                |
 
 | Downloading (Paused) | Cancel Confirmation | Share Intend by Youtube 
 |:--------------------:|:-------------------:|:-------------------:|
@@ -87,15 +87,15 @@ https://img.shields.io/github/downloads/ErManoj-Sharma/Youtube-download/V1.7-sta
 
 
 ### Platform Support
-| Feature | Android | Desktop / WSL |
-|---------|:-------:|:-------------:|
-| Video download | ✅ | ✅ |
-| Audio download (M4A) | ✅ | — |
-| Audio download (MP3) | — | ✅ |
-| Background service | ✅ | — |
-| Notification bar | ✅ | — |
+| Feature               |    Android     |      Desktop / WSL      |
+|-----------------------|:--------------:|:-----------------------:|
+| Video download        |       ✅        |            ✅            |
+| Audio download (M4A)  |       ✅        |            —            |
+| Audio download (MP3)  |       —        |            ✅            |
+| Background service    |       ✅        |            —            |
+| Notification bar      |       ✅        |            —            |
 | Auto ffmpeg detection | via p4a recipe | ✅ multi-location search |
-| In-app log viewer | ✅ | ✅ |
+| In-app log viewer     |       ✅        |            ✅            |
 
 
 ## Installation
@@ -109,15 +109,15 @@ https://img.shields.io/github/downloads/ErManoj-Sharma/Youtube-download/V1.7-sta
 
 ### Permissions explained
 
-| Permission | Why it's needed |
-|------------|----------------|
-| `INTERNET` | To fetch video info and download from YouTube |
-| `READ_MEDIA_VIDEO` | To save video files to Downloads (Android 13+) |
-| `READ_MEDIA_AUDIO` | To save audio files to Downloads (Android 13+) |
-| `WRITE_EXTERNAL_STORAGE` | To save files on older Android versions |
-| `FOREGROUND_SERVICE` | To keep download running in background |
-| `POST_NOTIFICATIONS` | To show progress in notification bar |
-| `WAKE_LOCK` | To prevent CPU sleep during active download |
+| Permission               | Why it's needed                                |
+|--------------------------|------------------------------------------------|
+| `INTERNET`               | To fetch video info and download from YouTube  |
+| `READ_MEDIA_VIDEO`       | To save video files to Downloads (Android 13+) |
+| `READ_MEDIA_AUDIO`       | To save audio files to Downloads (Android 13+) |
+| `WRITE_EXTERNAL_STORAGE` | To save files on older Android versions        |
+| `FOREGROUND_SERVICE`     | To keep download running in background         |
+| `POST_NOTIFICATIONS`     | To show progress in notification bar           |
+| `WAKE_LOCK`              | To prevent CPU sleep during active download    |
 
 ---
 
@@ -296,6 +296,15 @@ This ensures the `Downloads/YouTubeDownloader/` folder is always created success
 
 ## Troubleshooting
 
+**Download fails with "HTTP Error 403: Forbidden"**
+- This happens when YouTube changes its player/streaming protections faster than older yt-dlp versions adapt
+- Fix: update yt-dlp — this app pins the latest stable version and forces the `android`/`web_embedded` player clients which bypass YouTube's new SABR streaming blocks
+- Make sure you rebuild the APK from source after updating (see [Building from Source](#building-from-source))
+
+**"Sign in to confirm you're not a bot" error**
+- Usually affects datacenter/VPN IPs. Use a residential/mobile connection
+- On phones with a normal mobile data connection this usually does not appear
+
 **Download fails immediately**
 - Check your internet connection
 - Make sure the video is not age-restricted or private
@@ -345,7 +354,7 @@ buildozer android debug
 ```
 ```py
 # install app
-adb install bin/ytdlapp-1.6-arm64-v8a-debug.apk
+adb install bin/ytdlapp-1.8-arm64-v8a-debug.apk
 ```
 ```py
 # see logs
@@ -355,7 +364,7 @@ adb logcat | grep python
 ```py
 # single command
 adb logcat -c
-adb install -r -g bin\ytdlapp-1.6-arm64-v8a-debug.apk
+adb install -r -g bin\ytdlapp-1.8-arm64-v8a-debug.apk
 adb shell monkey -p org.ytdl.ytdlapp -c android.intent.category.LAUNCHER 1
 adb logcat | Select-String python
 ```

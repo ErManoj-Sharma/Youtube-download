@@ -22,4 +22,4 @@ sh==2.2.2
 urllib3==2.6.3
 virtualenv==20.36.1
 wheel==0.46.3
-yt-dlp==2026.2.4
+yt-dlp==2026.8.19
